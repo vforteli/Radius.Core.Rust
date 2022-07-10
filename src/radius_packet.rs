@@ -43,28 +43,37 @@ impl RadiusPacket {
             request_authenticator: rand::thread_rng().gen::<[u8; 16]>(),
         };
 
-        if packet.packetcode == packet_codes::PacketCode::AccountingRequest
-            || packet.packetcode == packet_codes::PacketCode::DisconnectRequest
+        if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
+            || packet.packetcode == packet_codes::PacketCode::DisconnectRequest)
+            && calculate_request_authenticator(packet_bytes, &secret.as_bytes())
+                != packet.authenticator
         {
-            let hash = calculate_request_authenticator(packet_bytes, &secret.as_bytes());
-            println!(
-                "Calculated hash {:?}, expected hash {:?}",
-                hash, packet.authenticator
-            );
-            // if (!packet.Authenticator.SequenceEqual(CalculateRequestAuthenticator(packet.SharedSecret, packetBytes)))
-            // {
-            //     throw new InvalidOperationException($"Invalid request authenticator in packet {packet.Identifier}, check secret?");
-            // }
+            return Err(packet_parsing_error::PacketParsingError {
+                message: "Invalid request authenticator in packet, check secret?".to_string(),
+            });
         }
 
         // The rest are attribute value pairs
         let mut position = 20;
         let mut messageAuthenticatorPosition = 0;
 
+        /*
+        while (position < packetLength)
+                   {
+                       var typecode = packetBytes[position];
+                       var length = packetBytes[position + 1];
+
+                       var contentBytes = new byte[length - 2];
+                       Buffer.BlockCopy(packetBytes, position + 2, contentBytes, 0, length - 2);
+        */
+
         Ok(packet)
     }
 }
 
+/// Creates a response authenticator
+/// Response authenticator = MD5(Code+ID+Length+RequestAuth+Attributes+Secret)
+/// Actually this means it is the response packet with the request authenticator and secret...
 pub fn calculate_response_authenticator(
     packet_bytes: &[u8],
     secret_bytes: &[u8],
@@ -82,6 +91,7 @@ pub fn calculate_response_authenticator(
     .into();
 }
 
+/// Calculate the request authenticator used in accounting, disconnect and coa requests
 pub fn calculate_request_authenticator(packet_bytes: &[u8], secret_bytes: &[u8]) -> [u8; 16] {
     return calculate_response_authenticator(
         packet_bytes,
@@ -89,46 +99,3 @@ pub fn calculate_request_authenticator(packet_bytes: &[u8], secret_bytes: &[u8])
         &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     );
 }
-
-/*
- /// <summary>
-        /// Creates a response authenticator
-        /// Response authenticator = MD5(Code+ID+Length+RequestAuth+Attributes+Secret)
-        /// Actually this means it is the response packet with the request authenticator and secret...
-        /// </summary>
-        /// <param name="sharedSecret"></param>
-        /// <param name="requestAuthenticator"></param>
-        /// <param name="packetBytes"></param>
-        /// <returns>Response authenticator for the packet</returns>
-        private byte[] CalculateResponseAuthenticator(byte[] sharedSecret, byte[] requestAuthenticator, byte[] packetBytes)
-        {
-            var responseAuthenticator = packetBytes.Concat(sharedSecret).ToArray();
-            Buffer.BlockCopy(requestAuthenticator, 0, responseAuthenticator, 4, 16);
-
-            using (var md5 = MD5.Create())
-            {
-                return md5.ComputeHash(responseAuthenticator);
-            }
-        }
-
-
-        /// <summary>
-        /// Calculate the request authenticator used in accounting, disconnect and coa requests
-        /// </summary>
-        /// <param name="sharedSecret"></param>
-        /// <param name="packetBytes"></param>
-        /// <returns></returns>
-        internal byte[] CalculateRequestAuthenticator(byte[] sharedSecret, byte[] packetBytes)
-        {
-            return CalculateResponseAuthenticator(sharedSecret, new byte[16], packetBytes);
-        }
-*/
-/*
-while (position < packetLength)
-           {
-               var typecode = packetBytes[position];
-               var length = packetBytes[position + 1];
-
-               var contentBytes = new byte[length - 2];
-               Buffer.BlockCopy(packetBytes, position + 2, contentBytes, 0, length - 2);
-*/

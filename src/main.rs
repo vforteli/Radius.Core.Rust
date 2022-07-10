@@ -36,7 +36,7 @@ fn main() {
                 packet.identifier, packet.packetcode, packet.authenticator,
             )
         }
-        Err(e) => println!("Packet parsing went haywire {}", e),
+        Err(e) => println!("Packet parsing went haywire: {}", e.message),
     }
 
     // let secret = "somesecret";
