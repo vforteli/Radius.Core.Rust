@@ -23,11 +23,11 @@ impl RadiusPacket {
 
     pub fn parse(
         packet_bytes: &[u8],
-        secret: &str,
+        secret_bytes: &[u8],
     ) -> Result<Self, packet_parsing_error::PacketParsingError> {
         println!("parsing packet!");
 
-        let length_from_packet = BigEndian::read_u16(&packet_bytes[2..4]);
+        let length_from_packet = BigEndian::read_u16(&packet_bytes[2..4]) as usize;
 
         // we can probably allow the buffer to include extra bytes at the end, but these will be ignored
         if packet_bytes.len() < length_from_packet.into() {
@@ -45,8 +45,7 @@ impl RadiusPacket {
 
         if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
             || packet.packetcode == packet_codes::PacketCode::DisconnectRequest)
-            && calculate_request_authenticator(packet_bytes, &secret.as_bytes())
-                != packet.authenticator
+            && calculate_request_authenticator(packet_bytes, secret_bytes) != packet.authenticator
         {
             return Err(packet_parsing_error::PacketParsingError {
                 message: "Invalid request authenticator in packet, check secret?".to_string(),
@@ -54,18 +53,88 @@ impl RadiusPacket {
         }
 
         // The rest are attribute value pairs
-        let mut position = 20;
-        let mut messageAuthenticatorPosition = 0;
+        let mut position: usize = 20;
+        let mut message_authenticator_position: usize = 0;
 
-        /*
-        while (position < packetLength)
-                   {
-                       var typecode = packetBytes[position];
-                       var length = packetBytes[position + 1];
+        while position < length_from_packet {
+            let typecode = &packet_bytes[position];
+            let attribute_length = packet_bytes[(position + 1)] as usize;
+            let attribute_content_length = attribute_length - 2;
+            let _content_bytes =
+                &packet_bytes[position + 2..position + 2 + attribute_content_length];
 
-                       var contentBytes = new byte[length - 2];
-                       Buffer.BlockCopy(packetBytes, position + 2, contentBytes, 0, length - 2);
-        */
+            // println!("Content: {:?}", content_bytes);
+
+            // Venvdor specific attribute
+            if *typecode == 26 {
+                // do some parsing eh
+                /*
+                    var vsa = new VendorSpecificAttribute(contentBytes);
+                    var vendorAttributeDefinition = _radiusDictionary.GetVendorAttribute(vsa.VendorId, vsa.VendorCode);
+                    if (vendorAttributeDefinition == null)
+                    {
+                        _logger.LogInformation($"Unknown vsa: {vsa.VendorId}:{vsa.VendorCode}");
+                    }
+                    else
+                    {
+                        try
+                        {
+                            var content = ParseContentBytes(vsa.Value, vendorAttributeDefinition.Type, typecode, packet.Authenticator, packet.SharedSecret);
+                            packet.AddAttributeObject(vendorAttributeDefinition.Name, content);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, $"Something went wrong with vsa {vendorAttributeDefinition.Name}");
+                        }
+                    }
+                */
+            } else {
+                if *typecode == 80 {
+                    // println!("Found message authenticator in packet \\o/");
+                    message_authenticator_position = position; // have to save the position to be able to zero it when validating the packet
+                }
+
+                // not vsa.. do some parsing eh
+                /*
+                    var attributeDefinition = _radiusDictionary.GetAttribute(typecode);
+                    if (attributeDefinition.Code == 80)
+                    {
+                        messageAuthenticatorPosition = position;
+                    }
+                    try
+                    {
+                        var content = ParseContentBytes(contentBytes, attributeDefinition.Type, typecode, packet.Authenticator, packet.SharedSecret);
+                        packet.AddAttributeObject(attributeDefinition.Name, content);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Something went wrong with {attributeDefinition.Name}");
+                        _logger.LogDebug($"Attribute bytes: {contentBytes.ToHexString()}");
+                    }
+                */
+            }
+
+            position += attribute_length;
+        }
+
+        if message_authenticator_position != 0 {
+            println!("Found message authenticator!");
+            let calculated_message_authenticator = calculate_message_authenticator(
+                packet_bytes,
+                secret_bytes,
+                message_authenticator_position,
+                &[0; 16],
+            );
+
+            let expected_message_authenticator =
+                &packet_bytes[message_authenticator_position..message_authenticator_position + 16];
+
+            if expected_message_authenticator != calculated_message_authenticator {
+                return Err(packet_parsing_error::PacketParsingError {
+                    message: "Invalid message authenticator in packet, check secret?".to_string(),
+                });
+            }
+        }
 
         Ok(packet)
     }
@@ -93,9 +162,56 @@ pub fn calculate_response_authenticator(
 
 /// Calculate the request authenticator used in accounting, disconnect and coa requests
 pub fn calculate_request_authenticator(packet_bytes: &[u8], secret_bytes: &[u8]) -> [u8; 16] {
-    return calculate_response_authenticator(
-        packet_bytes,
-        secret_bytes,
-        &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    );
+    return calculate_response_authenticator(packet_bytes, secret_bytes, &[0; 16]);
 }
+
+/// Calculate the message authenticator found in attribute
+pub fn calculate_message_authenticator(
+    packet_bytes: &[u8],
+    _secret_bytes: &[u8],
+    message_authenticator_position: usize,
+    _authenticator: &[u8; 16],
+) -> [u8; 16] {
+    // todo handle authenticator
+
+    // zero the message authenticator value for calculation
+    let bytes = [
+        &packet_bytes[0..message_authenticator_position + 2],
+        &[0; 16],
+        &packet_bytes[message_authenticator_position + 2 + 16..],
+    ]
+    .concat();
+
+    println!("Original packet: {:?}", packet_bytes);
+    println!("zeroed packet: {:?}", bytes);
+
+    // todo hmac stuff goes here..
+    [0; 16]
+}
+
+/*
+/// <summary>
+       /// Validates a message authenticator attribute if one exists in the packet
+       /// Message-Authenticator = HMAC-MD5 (Type, Identifier, Length, Request Authenticator, Attributes)
+       /// The HMAC-MD5 function takes in two arguments:
+       /// The payload of the packet, which includes the 16 byte Message-Authenticator field filled with zeros
+       /// The shared secret
+       /// https://www.ietf.org/rfc/rfc2869.txt
+       /// </summary>
+       /// <returns></returns>
+       private byte[] CalculateMessageAuthenticator(byte[] packetBytes, byte[] sharedSecret, byte[] requestAuthenticator)
+       {
+           var temp = new byte[packetBytes.Count()];
+           packetBytes.CopyTo(temp, 0);
+
+           if (requestAuthenticator != null)
+           {
+               requestAuthenticator.CopyTo(temp, 4);
+           }
+
+           using (var md5 = new HMACMD5(sharedSecret))
+           {
+               return md5.ComputeHash(temp);
+           }
+       }
+*/
