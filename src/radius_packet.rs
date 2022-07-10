@@ -215,3 +215,60 @@ pub fn calculate_message_authenticator(
            }
        }
 */
+
+#[cfg(test)]
+mod tests {
+    use super::RadiusPacket;
+
+    #[test]
+    fn parse_packet_valid_message_authenticator() {
+        let secret = "xyzzy5461".as_bytes();
+        let test_packet_bytes = hex::decode(
+            "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3",
+        )
+        .unwrap();
+
+        let packet = RadiusPacket::parse(&test_packet_bytes, secret);
+
+        assert!(packet.is_ok())
+    }
+
+    #[test]
+    fn parse_packet_invalid_message_authenticator() {
+        let secret = "xyzzy5461durr".as_bytes();
+        let test_packet_bytes = hex::decode(
+            "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3",
+        )
+        .unwrap();
+
+        let packet = RadiusPacket::parse(&test_packet_bytes, secret);
+
+        assert!(packet.is_err())
+    }
+
+    #[test]
+    fn parse_packet_valid_request_authenticator() {
+        let secret = "xyzzy5461".as_bytes();
+        let test_packet_bytes = hex::decode(
+            "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234",
+        )
+        .unwrap();
+
+        let packet = RadiusPacket::parse(&test_packet_bytes, secret);
+
+        assert!(packet.is_ok())
+    }
+
+    #[test]
+    fn parse_packet_invalid_request_authenticator() {
+        let secret = "foo".as_bytes();
+        let test_packet_bytes = hex::decode(
+            "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234",
+        )
+        .unwrap();
+
+        let packet = RadiusPacket::parse(&test_packet_bytes, secret);
+
+        assert!(packet.is_err())
+    }
+}
