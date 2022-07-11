@@ -1,5 +1,9 @@
 use byteorder::{BigEndian, ByteOrder};
+use hmac::{Hmac, Mac};
+use md5::{Digest, Md5};
 use rand::Rng;
+
+type HmacMd5 = Hmac<Md5>;
 
 pub mod packet_codes;
 pub mod packet_parsing_error;
@@ -126,8 +130,8 @@ impl RadiusPacket {
                 &[0; 16],
             );
 
-            let expected_message_authenticator =
-                &packet_bytes[message_authenticator_position..message_authenticator_position + 16];
+            let expected_message_authenticator = &packet_bytes
+                [message_authenticator_position + 2..message_authenticator_position + 2 + 16];
 
             if expected_message_authenticator != calculated_message_authenticator {
                 return Err(packet_parsing_error::PacketParsingError {
@@ -148,7 +152,7 @@ pub fn calculate_response_authenticator(
     secret_bytes: &[u8],
     authenticator: &[u8; 16],
 ) -> [u8; 16] {
-    return md5::compute(
+    return Md5::digest(
         [
             &packet_bytes[0..4],
             authenticator,
@@ -168,7 +172,7 @@ pub fn calculate_request_authenticator(packet_bytes: &[u8], secret_bytes: &[u8])
 /// Calculate the message authenticator found in attribute
 pub fn calculate_message_authenticator(
     packet_bytes: &[u8],
-    _secret_bytes: &[u8],
+    secret_bytes: &[u8],
     message_authenticator_position: usize,
     _authenticator: &[u8; 16],
 ) -> [u8; 16] {
@@ -185,36 +189,11 @@ pub fn calculate_message_authenticator(
     println!("Original packet: {:?}", packet_bytes);
     println!("zeroed packet: {:?}", bytes);
 
-    // todo hmac stuff goes here..
-    [0; 16]
+    let mut mac = HmacMd5::new_from_slice(secret_bytes).unwrap();
+    mac.update(&bytes);
+
+    return mac.finalize().into_bytes().into();
 }
-
-/*
-/// <summary>
-       /// Validates a message authenticator attribute if one exists in the packet
-       /// Message-Authenticator = HMAC-MD5 (Type, Identifier, Length, Request Authenticator, Attributes)
-       /// The HMAC-MD5 function takes in two arguments:
-       /// The payload of the packet, which includes the 16 byte Message-Authenticator field filled with zeros
-       /// The shared secret
-       /// https://www.ietf.org/rfc/rfc2869.txt
-       /// </summary>
-       /// <returns></returns>
-       private byte[] CalculateMessageAuthenticator(byte[] packetBytes, byte[] sharedSecret, byte[] requestAuthenticator)
-       {
-           var temp = new byte[packetBytes.Count()];
-           packetBytes.CopyTo(temp, 0);
-
-           if (requestAuthenticator != null)
-           {
-               requestAuthenticator.CopyTo(temp, 4);
-           }
-
-           using (var md5 = new HMACMD5(sharedSecret))
-           {
-               return md5.ComputeHash(temp);
-           }
-       }
-*/
 
 #[cfg(test)]
 mod tests {
