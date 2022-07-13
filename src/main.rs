@@ -16,10 +16,11 @@ fn main() {
     // let test_packet_bytes_hex =
     //     "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3";
 
-    // let test_packet_bytes_hex =
-    //     "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234"; // accounting packet with valid authenticator
+    let test_packet_bytes_hex =
+        "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234"; // accounting packet with valid authenticator
 
-    let test_packet_bytes_hex = "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3";  // valid messsage authenticator
+    // let test_packet_bytes_hex =
+    //     "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3"; // valid messsage authenticator
 
     let test_packet_bytes = hex::decode(test_packet_bytes_hex).unwrap();
 
@@ -31,12 +32,16 @@ fn main() {
         Ok(packet) => {
             println!(
                 "
-            identifier: {}
-            code: {:?}
-            authenticator: {:?}        
+identifier: {}
+code: {:?}
+authenticator: {:?}        
             ",
                 packet.identifier, packet.packetcode, packet.authenticator,
-            )
+            );
+
+            for attribute in packet.attributes {
+                println!("Attribute {} : {:?}", attribute.0, attribute.1);
+            }
         }
         Err(e) => println!("Packet parsing went haywire: {}", e.message),
     }

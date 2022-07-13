@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use byteorder::{BigEndian, ByteOrder};
 use hmac::{Hmac, Mac};
 use md5::{Digest, Md5};
@@ -7,12 +9,14 @@ type HmacMd5 = Hmac<Md5>;
 
 pub mod packet_codes;
 pub mod packet_parsing_error;
+pub mod rfc_attributes;
 
 pub struct RadiusPacket {
     pub identifier: u8,
     pub packetcode: packet_codes::PacketCode,
     pub authenticator: [u8; 16],
     pub request_authenticator: [u8; 16],
+    pub attributes: HashMap<u8, Vec<u8>>,
 }
 
 impl RadiusPacket {
@@ -40,11 +44,12 @@ impl RadiusPacket {
             });
         }
 
-        let packet = Self {
+        let mut packet = Self {
             identifier: packet_bytes[1],
             packetcode: packet_codes::PacketCode::from(packet_bytes[0]),
             authenticator: packet_bytes[4..20].try_into().unwrap(),
             request_authenticator: rand::thread_rng().gen::<[u8; 16]>(),
+            attributes: HashMap::new(),
         };
 
         if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
@@ -64,12 +69,10 @@ impl RadiusPacket {
             let typecode = &packet_bytes[position];
             let attribute_length = packet_bytes[(position + 1)] as usize;
             let attribute_content_length = attribute_length - 2;
-            let _content_bytes =
+            let content_bytes =
                 &packet_bytes[position + 2..position + 2 + attribute_content_length];
 
-            // println!("Content: {:?}", content_bytes);
-
-            // Venvdor specific attribute
+            // Vendor specific attribute
             if *typecode == 26 {
                 // do some parsing eh
                 /*
@@ -94,17 +97,16 @@ impl RadiusPacket {
                 */
             } else {
                 if *typecode == 80 {
-                    // println!("Found message authenticator in packet \\o/");
                     message_authenticator_position = position; // have to save the position to be able to zero it when validating the packet
                 }
 
-                // not vsa.. do some parsing eh
+                packet
+                    .attributes
+                    .insert(typecode.to_owned(), content_bytes.to_vec()); // todo this should actually be a list of some sort
+
                 /*
                     var attributeDefinition = _radiusDictionary.GetAttribute(typecode);
-                    if (attributeDefinition.Code == 80)
-                    {
-                        messageAuthenticatorPosition = position;
-                    }
+
                     try
                     {
                         var content = ParseContentBytes(contentBytes, attributeDefinition.Type, typecode, packet.Authenticator, packet.SharedSecret);
