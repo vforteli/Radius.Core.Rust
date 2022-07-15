@@ -1,18 +1,43 @@
+use std::net::UdpSocket;
+
 mod radius_packet;
 
-fn main() {
-    println!("Hello, world!");
+fn main() -> std::io::Result<()> {
+    {
+        let socket = UdpSocket::bind("127.0.0.1:1812")?;
+        let secret = "hurrdurr".as_bytes();
 
-    // let fooo = derp("somestring");
-    // println!("herp {0}", fooo);
+        loop {
+            let mut buffer = [0; 4096];
+            let (length, src) = socket.recv_from(&mut buffer)?;
 
-    // let packet = radius_packet::RadiusPacket {
-    //     identifier: 5,
-    //     packetcode: radius_packet::packet_codes::PacketCode::AccessAccept,
-    //     authenticator: [0; 16],
-    //     request_authenticator: [0; 16],
-    // };
+            let packet = radius_packet::RadiusPacket::parse(&buffer[..length], secret);
 
+            match packet {
+                Ok(packet) => {
+                    println!(
+                        "
+    identifier: {}
+    code: {:?}
+    authenticator: {:?}        
+                ",
+                        packet.identifier, packet.packetcode, packet.authenticator,
+                    );
+
+                    for attribute in packet.attributes {
+                        println!("Attribute {} : {:?}", attribute.0, attribute.1);
+                    }
+                }
+                Err(e) => println!("Packet parsing went haywire: {}", e.message),
+            }
+
+            // todo yeeaah, do something sensible
+            socket.send_to(&buffer, &src)?;
+        }
+    }
+}
+
+fn do_stuff() {
     // let test_packet_bytes_hex =
     //     "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3";
 
@@ -54,7 +79,3 @@ authenticator: {:?}
     //     secret,
     // );
 }
-
-// fn derp(foo: &str) -> String {
-//     return "herp ".to_owned() + foo;
-// }

@@ -33,8 +33,6 @@ impl RadiusPacket {
         packet_bytes: &[u8],
         secret_bytes: &[u8],
     ) -> Result<Self, packet_parsing_error::PacketParsingError> {
-        println!("parsing packet!");
-
         let length_from_packet = BigEndian::read_u16(&packet_bytes[2..4]) as usize;
 
         // we can probably allow the buffer to include extra bytes at the end, but these will be ignored
