@@ -129,7 +129,7 @@ impl RadiusPacket {
                 packet_bytes,
                 secret_bytes,
                 message_authenticator_position,
-                &[0; 16],
+                None,
             );
 
             let expected_message_authenticator = &packet_bytes
@@ -176,13 +176,12 @@ pub fn calculate_message_authenticator(
     packet_bytes: &[u8],
     secret_bytes: &[u8],
     message_authenticator_position: usize,
-    _authenticator: &[u8; 16],
+    authenticator: Option<&[u8; 16]>,
 ) -> [u8; 16] {
-    // todo handle authenticator
-
-    // zero the message authenticator value for calculation
     let bytes = [
-        &packet_bytes[0..message_authenticator_position + 2],
+        &packet_bytes[0..4],
+        authenticator.unwrap_or(&packet_bytes[4..20].try_into().unwrap()),
+        &packet_bytes[20..message_authenticator_position + 2],
         &[0; 16],
         &packet_bytes[message_authenticator_position + 2 + 16..],
     ]
