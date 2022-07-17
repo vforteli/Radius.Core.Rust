@@ -16,7 +16,7 @@ pub struct RadiusPacket {
     pub packetcode: packet_codes::PacketCode,
     pub authenticator: [u8; 16],
     pub request_authenticator: [u8; 16],
-    pub attributes: HashMap<u8, Vec<u8>>,
+    pub attributes: Vec<(u8, Vec<u8>)>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
 }
 
 impl RadiusPacket {
@@ -30,16 +30,22 @@ impl RadiusPacket {
             identifier,
             authenticator: [0; 16],
             request_authenticator: request_authenticator,
-            attributes: HashMap::new(),
+            attributes: Vec::new(),
         }
     }
 
     pub fn get_bytes(self, secret_bytes: &[u8]) -> Vec<u8> {
         let mut header_bytes: [u8; 4] = [self.packetcode as u8, self.identifier, 0, 0];
 
-        let attributes_bytes: [u8; 0] = []; // todo get these from attributes hashmap..
+        let mut attribute_bytes: Vec<u8> = Vec::new();
+        for attribute in self.attributes {
+            println!("adding attribute {} : {:?}", attribute.0, attribute.1);
+            attribute_bytes.extend([attribute.0]);
+            attribute_bytes.extend([(attribute.1.len() as u8) + 2]);
+            attribute_bytes.extend(attribute.1);
+        }
 
-        let packet_length_bytes = 4 + 16 + attributes_bytes.len(); // header + authenticator + attributes
+        let packet_length_bytes = 4 + 16 + attribute_bytes.len(); // header + authenticator + attributes
 
         BigEndian::write_u16(
             &mut header_bytes[2..4],
@@ -49,14 +55,14 @@ impl RadiusPacket {
         let authenticator_bytes = calculate_response_authenticator(
             &header_bytes,
             &self.request_authenticator,
-            &attributes_bytes,
+            &attribute_bytes,
             secret_bytes,
         );
 
         let mut response_packet_bytes: Vec<u8> = Vec::new();
         response_packet_bytes.extend(header_bytes);
         response_packet_bytes.extend(authenticator_bytes);
-        response_packet_bytes.extend(attributes_bytes);
+        response_packet_bytes.extend(attribute_bytes);
 
         return response_packet_bytes;
     }
@@ -78,15 +84,15 @@ impl RadiusPacket {
             identifier: packet_bytes[1],
             packetcode: packet_codes::PacketCode::from(packet_bytes[0]),
             authenticator: packet_bytes[4..20].try_into().unwrap(),
-            request_authenticator: rand::thread_rng().gen::<[u8; 16]>(),
-            attributes: HashMap::new(),
+            request_authenticator: [0; 16],
+            attributes: Vec::new(),
         };
 
         if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
             || packet.packetcode == packet_codes::PacketCode::DisconnectRequest)
             && calculate_request_authenticator(
                 &packet_bytes[0..4].try_into().unwrap(),
-                &packet_bytes[20..],
+                &packet_bytes[20..length_from_packet],
                 secret_bytes,
             ) != packet.authenticator
         {
@@ -136,7 +142,7 @@ impl RadiusPacket {
 
                 packet
                     .attributes
-                    .insert(typecode.to_owned(), content_bytes.to_vec()); // todo this should actually be a list of some sort
+                    .extend([(typecode.to_owned(), content_bytes.to_vec())]);
 
                 /*
                     var attributeDefinition = _radiusDictionary.GetAttribute(typecode);
@@ -300,6 +306,54 @@ mod tests {
             "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234",
         )
         .unwrap();
+
+        let packet = RadiusPacket::parse(&test_packet_bytes, secret);
+
+        assert!(packet.is_err())
+    }
+
+    #[test]
+    fn parse_and_assemble_packet() {
+        let secret = "xyzzy5461".as_bytes();
+        let test_packet_bytes = hex::decode(
+            "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234",
+        )
+        .unwrap();
+
+        let packet = RadiusPacket::parse(&test_packet_bytes, secret);
+
+        let packet_bytes = packet.unwrap().get_bytes(secret);
+
+        assert_eq!(test_packet_bytes, packet_bytes);
+    }
+
+    #[test]
+    fn parse_and_assemble_packet_extra_bytes() {
+        let secret = "xyzzy5461".as_bytes();
+        let test_packet_bytes = hex::decode(
+            "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234ff00ff00ff00ff",
+        )
+        .unwrap();
+
+        let expected_bytes = hex::decode(
+            "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234",
+        )
+        .unwrap();
+
+        let packet = RadiusPacket::parse(&test_packet_bytes, secret);
+
+        let actual_packet_bytes = packet.unwrap().get_bytes(secret);
+
+        assert_eq!(expected_bytes, actual_packet_bytes);
+    }
+
+    #[test]
+    fn parse_and_assemble_packet_missing_bytes() {
+        let secret = "xyzzy5461".as_bytes();
+        let test_packet_bytes = hex::decode(
+            "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c0732303032",
+        )
+        .unwrap();       
 
         let packet = RadiusPacket::parse(&test_packet_bytes, secret);
 
