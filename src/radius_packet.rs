@@ -20,14 +20,46 @@ pub struct RadiusPacket {
 }
 
 impl RadiusPacket {
-    // pub fn new(packetcode: packet_codes::PacketCode, identifier: u8, secret: &str) -> Self {
-    //     Self {
-    //         packetcode,
-    //         identifier,
-    //         authenticator: rand::thread_rng().gen::<[u8; 16]>(),
-    //         request_authenticator: rand::thread_rng().gen::<[u8; 16]>(),
-    //     }
-    // }
+    pub fn new_response(
+        packetcode: packet_codes::PacketCode,
+        identifier: u8,
+        request_authenticator: [u8; 16],
+    ) -> Self {
+        Self {
+            packetcode,
+            identifier,
+            authenticator: [0; 16],
+            request_authenticator: request_authenticator,
+            attributes: HashMap::new(),
+        }
+    }
+
+    pub fn get_bytes(self, secret_bytes: &[u8]) -> Vec<u8> {
+        let mut header_bytes: [u8; 4] = [self.packetcode as u8, self.identifier, 0, 0];
+
+        let attributes_bytes: [u8; 0] = []; // todo get these from attributes hashmap..
+
+        let packet_length_bytes = 4 + 16 + attributes_bytes.len(); // header + authenticator + attributes
+
+        BigEndian::write_u16(
+            &mut header_bytes[2..4],
+            packet_length_bytes.try_into().unwrap(),
+        );
+
+        let authenticator_bytes = calculate_response_authenticator(
+            &header_bytes,
+            &self.request_authenticator,
+            &attributes_bytes,
+            secret_bytes,
+        );
+
+        let mut response_packet_bytes: Vec<u8> = Vec::new();
+        response_packet_bytes.extend(header_bytes);
+        response_packet_bytes.extend(authenticator_bytes);
+        response_packet_bytes.extend(attributes_bytes);
+
+        return response_packet_bytes;
+    }
 
     pub fn parse(
         packet_bytes: &[u8],
@@ -52,7 +84,11 @@ impl RadiusPacket {
 
         if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
             || packet.packetcode == packet_codes::PacketCode::DisconnectRequest)
-            && calculate_request_authenticator(packet_bytes, secret_bytes) != packet.authenticator
+            && calculate_request_authenticator(
+                &packet_bytes[0..4].try_into().unwrap(),
+                &packet_bytes[20..],
+                secret_bytes,
+            ) != packet.authenticator
         {
             return Err(packet_parsing_error::PacketParsingError {
                 message: "Invalid request authenticator in packet, check secret?".to_string(),
@@ -147,16 +183,17 @@ impl RadiusPacket {
 /// Creates a response authenticator
 /// Response authenticator = MD5(Code+ID+Length+RequestAuth+Attributes+Secret)
 /// Actually this means it is the response packet with the request authenticator and secret...
-pub fn calculate_response_authenticator(
-    packet_bytes: &[u8],
-    secret_bytes: &[u8],
+pub fn calculate_authenticator(
+    packet_header_bytes: &[u8; 4],
     authenticator: &[u8; 16],
+    attribute_bytes: &[u8],
+    secret_bytes: &[u8],
 ) -> [u8; 16] {
     return Md5::digest(
         [
-            &packet_bytes[0..4],
+            packet_header_bytes as &[u8],
             authenticator,
-            &packet_bytes[20..],
+            attribute_bytes,
             secret_bytes,
         ]
         .concat(),
@@ -165,8 +202,27 @@ pub fn calculate_response_authenticator(
 }
 
 /// Calculate the request authenticator used in accounting, disconnect and coa requests
-pub fn calculate_request_authenticator(packet_bytes: &[u8], secret_bytes: &[u8]) -> [u8; 16] {
-    return calculate_response_authenticator(packet_bytes, secret_bytes, &[0; 16]);
+pub fn calculate_request_authenticator(
+    packet_header_bytes: &[u8; 4],
+    attribute_bytes: &[u8],
+    secret_bytes: &[u8],
+) -> [u8; 16] {
+    return calculate_authenticator(packet_header_bytes, &[0; 16], attribute_bytes, secret_bytes);
+}
+
+/// Calculate the response authenticator using authenticator from request
+pub fn calculate_response_authenticator(
+    packet_header_bytes: &[u8; 4],
+    request_authenticator: &[u8; 16],
+    attribute_bytes: &[u8],
+    secret_bytes: &[u8],
+) -> [u8; 16] {
+    return calculate_authenticator(
+        packet_header_bytes,
+        request_authenticator,
+        attribute_bytes,
+        secret_bytes,
+    );
 }
 
 /// Calculate the message authenticator found in attribute

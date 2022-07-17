@@ -27,12 +27,20 @@ fn main() -> std::io::Result<()> {
                     for attribute in packet.attributes {
                         println!("Attribute {} : {:?}", attribute.0, attribute.1);
                     }
+
+                    let response_packet = radius_packet::RadiusPacket::new_response(
+                        radius_packet::packet_codes::PacketCode::AccessAccept,
+                        packet.identifier,
+                        packet.authenticator,
+                    );
+
+                    let response_packet_bytes = response_packet.get_bytes(&secret);
+
+                    // todo packet handlers
+                    socket.send_to(&response_packet_bytes, &src)?;
                 }
                 Err(e) => println!("Packet parsing went haywire: {}", e.message),
             }
-
-            // todo yeeaah, do something sensible
-            socket.send_to(&buffer, &src)?;
         }
     }
 }
