@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug};
+// use std::{collections::HashMap, fmt::Debug};
 
 use byteorder::{BigEndian, ByteOrder};
 use hmac::{Hmac, Mac};
@@ -29,7 +29,32 @@ impl RadiusPacket {
             packetcode,
             identifier,
             authenticator: [0; 16],
-            request_authenticator: request_authenticator,
+            request_authenticator,
+            attributes: Vec::new(),
+        }
+    }
+
+    pub fn new_request(packetcode: packet_codes::PacketCode, identifier: u8) -> Self {
+        // // Generate random authenticator for access request packets
+        // if (Code == PacketCode.AccessRequest || Code == PacketCode.StatusServer)
+        // {
+        //     using (var csp = RandomNumberGenerator.Create())
+        //     {
+        //         csp.GetNonZeroBytes(Authenticator);
+        //     }
+        // }
+
+        // // A Message authenticator is required in status server packets, calculated last
+        // if (Code == PacketCode.StatusServer)
+        // {
+        //     AddAttribute("Message-Authenticator", new byte[16]);
+        // }
+
+        Self {
+            packetcode,
+            identifier,
+            authenticator: rand::thread_rng().gen::<[u8; 16]>(),
+            request_authenticator: [0; 16],
             attributes: Vec::new(),
         }
     }
@@ -315,6 +340,8 @@ pub fn calculate_message_authenticator(
 
 #[cfg(test)]
 mod tests {
+    use byteorder::{BigEndian, ByteOrder};
+
     use super::RadiusPacket;
 
     #[test]
@@ -416,4 +443,59 @@ mod tests {
 
         assert!(packet.is_err())
     }
+
+    #[test]
+    fn create_access_request_packet() {
+        let secret_bytes = "xyzzy5461".as_bytes();
+        let expected_bytes = hex::decode("010000380f403f9473978057bd83d5cb98f4227a01066e656d6f02120dbe708d93d413ce3196e43f782a0aee0406c0a80110050600000003").unwrap();
+
+        let mut packet =
+            RadiusPacket::new_request(super::packet_codes::PacketCode::AccessRequest, 0);
+
+        // setting this manually here to match expected bytes... it is actually random
+        packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        // this makes no sense since it should be done in the packet.. but just testing anyway...
+        packet.attributes.push((1, "nemo".as_bytes().to_vec()));
+        packet
+            .attributes
+            .push((2, "arctangent".as_bytes().to_vec()));
+        packet
+            .attributes
+            .push((4, "192.168.1.16".as_bytes().to_vec())); // todo fix.. this should be bytes...
+
+        let mut buffer: [u8; 4] = [0; 4];
+        BigEndian::write_u32(&mut buffer, 3);
+
+        packet.attributes.push((5, buffer.to_vec()));
+
+        let packet_bytes = packet.get_bytes(secret_bytes);
+
+        assert_eq!(expected_bytes, packet_bytes);
+    }
+    /*
+    *   /// <summary>
+       /// Create packet and verify bytes
+       /// Example from https://tools.ietf.org/html/rfc2865
+       /// </summary>
+       [TestCase]
+       public void TestCreateAccessRequestPacket()
+       {
+           var expected = "010000380f403f9473978057bd83d5cb98f4227a01066e656d6f02120dbe708d93d413ce3196e43f782a0aee0406c0a80110050600000003";
+           var secret = "xyzzy5461";
+
+           var packet = new RadiusPacket(PacketCode.AccessRequest, 0, secret);
+           packet.Authenticator = Utils.StringToByteArray("0f403f9473978057bd83d5cb98f4227a");
+           packet.AddAttribute("User-Name", "nemo");
+           packet.AddAttribute("User-Password", "arctangent");
+           packet.AddAttribute("NAS-IP-Address", IPAddress.Parse("192.168.1.16"));
+           packet.AddAttribute("NAS-Port", 3);
+
+           var radiusPacketParser = new RadiusPacketParser(NullLogger<RadiusPacketParser>.Instance, GetDictionary());
+           Assert.AreEqual(expected, radiusPacketParser.GetBytes(packet).ToHexString());
+       }
+    */
 }

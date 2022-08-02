@@ -1,3 +1,7 @@
+/**
+ * Radius packet codes
+ * Actually these could be split into request and response codes to better type the new_request function in radius packet
+ */
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
 #[derive(Copy, Clone)]

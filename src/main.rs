@@ -18,10 +18,10 @@ fn main() -> std::io::Result<()> {
                 Ok(packet) => {
                     println!(
                         "
-    identifier: {}
-    code: {:?}
-    authenticator: {:?}        
-                ",
+                        identifier: {}
+                        code: {:?}
+                        authenticator: {:?}        
+                        ",
                         packet.identifier, packet.packetcode, packet.authenticator,
                     );
 
