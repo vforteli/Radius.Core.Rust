@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 use byteorder::{BigEndian, ByteOrder};
 use hmac::{Hmac, Mac};
@@ -52,6 +52,56 @@ impl RadiusPacket {
             packet_length_bytes.try_into().unwrap(),
         );
 
+        if self.packetcode == packet_codes::PacketCode::AccountingRequest
+            || self.packetcode == packet_codes::PacketCode::DisconnectRequest
+            || self.packetcode == packet_codes::PacketCode::CoaRequest
+        {
+            println!()
+        }
+
+        // else if (packet.Code == PacketCode.StatusServer)
+        // {
+        //     var authenticator = packet.RequestAuthenticator != null ? CalculateResponseAuthenticator(packet.SharedSecret, packet.RequestAuthenticator, packetBytesArray) : packet.Authenticator;
+        //     Buffer.BlockCopy(authenticator, 0, packetBytesArray, 4, 16);
+
+        //     if (messageAuthenticatorPosition != 0)
+        //     {
+        //         var temp = new byte[16];
+        //         Buffer.BlockCopy(temp, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
+        //         var messageAuthenticatorBytes = CalculateMessageAuthenticator(packetBytesArray, packet.SharedSecret, packet.RequestAuthenticator);
+        //         Buffer.BlockCopy(messageAuthenticatorBytes, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
+        //     }
+        // }
+
+        match self.packetcode {
+            packet_codes::PacketCode::AccountingRequest
+            | packet_codes::PacketCode::DisconnectRequest
+            | packet_codes::PacketCode::CoaRequest => {
+                println!("hurr");
+            }
+            packet_codes::PacketCode::StatusServer | packet_codes::PacketCode::StatusClient => {
+                println!("durr");
+            }
+            _ => {
+                println!("all other...")
+            }
+        }
+        /*
+        // todo refactor this...
+           if (packet.Code == PacketCode.AccountingRequest || packet.Code == PacketCode.DisconnectRequest || packet.Code == PacketCode.CoaRequest)
+           {
+               if (messageAuthenticatorPosition != 0)
+               {
+                   var temp = new byte[16];
+                   Buffer.BlockCopy(temp, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
+                   var messageAuthenticatorBytes = CalculateMessageAuthenticator(packetBytesArray, packet.SharedSecret, null);
+                   Buffer.BlockCopy(messageAuthenticatorBytes, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
+               }
+
+               var authenticator = CalculateRequestAuthenticator(packet.SharedSecret, packetBytesArray);
+               Buffer.BlockCopy(authenticator, 0, packetBytesArray, 4, 16);
+           } */
+
         let authenticator_bytes = calculate_response_authenticator(
             &header_bytes,
             &self.request_authenticator,
@@ -80,6 +130,8 @@ impl RadiusPacket {
             });
         }
 
+        let packet_bytes = &packet_bytes[0..length_from_packet];
+
         let mut packet = Self {
             identifier: packet_bytes[1],
             packetcode: packet_codes::PacketCode::from(packet_bytes[0]),
@@ -88,11 +140,16 @@ impl RadiusPacket {
             attributes: Vec::new(),
         };
 
+        println!(
+            "Parsing {:?} packet with id {}",
+            packet.packetcode, packet.identifier
+        );
+
         if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
             || packet.packetcode == packet_codes::PacketCode::DisconnectRequest)
             && calculate_request_authenticator(
                 &packet_bytes[0..4].try_into().unwrap(),
-                &packet_bytes[20..length_from_packet],
+                &packet_bytes[20..],
                 secret_bytes,
             ) != packet.authenticator
         {
@@ -109,7 +166,7 @@ impl RadiusPacket {
             let typecode = &packet_bytes[position];
             let attribute_length = packet_bytes[(position + 1)] as usize;
             let attribute_content_length = attribute_length - 2;
-            let content_bytes =
+            let attribute_content_bytes =
                 &packet_bytes[position + 2..position + 2 + attribute_content_length];
 
             // Vendor specific attribute
@@ -142,7 +199,7 @@ impl RadiusPacket {
 
                 packet
                     .attributes
-                    .extend([(typecode.to_owned(), content_bytes.to_vec())]);
+                    .extend([(typecode.to_owned(), attribute_content_bytes.to_vec())]);
 
                 /*
                     var attributeDefinition = _radiusDictionary.GetAttribute(typecode);
@@ -353,7 +410,7 @@ mod tests {
         let test_packet_bytes = hex::decode(
             "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c0732303032",
         )
-        .unwrap();       
+        .unwrap();
 
         let packet = RadiusPacket::parse(&test_packet_bytes, secret);
 

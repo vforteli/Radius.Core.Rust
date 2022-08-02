@@ -7,6 +7,7 @@ fn main() -> std::io::Result<()> {
         let socket = UdpSocket::bind("127.0.0.1:1812")?;
         let secret = "hurrdurr".as_bytes();
 
+        do_stuff();
         loop {
             let mut buffer = [0; 4096];
             let (length, src) = socket.recv_from(&mut buffer)?;
@@ -50,7 +51,7 @@ fn do_stuff() {
     //     "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3";
 
     let test_packet_bytes_hex =
-        "0404002711019c27d4e00cbc523b3e2fc834baf401066e656d6f2806000000012c073230303234"; // accounting packet with valid authenticator
+        "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa300ff00ff00ff"; // accounting packet with valid authenticator
 
     // let test_packet_bytes_hex =
     //     "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3"; // valid messsage authenticator

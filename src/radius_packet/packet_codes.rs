@@ -1,6 +1,6 @@
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 #[repr(u8)]
+#[derive(Copy, Clone)]
 pub enum PacketCode {
     AccessRequest = 1,
     AccessAccept = 2,
