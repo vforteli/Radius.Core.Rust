@@ -1,15 +1,13 @@
 // use std::{collections::HashMap, fmt::Debug};
 
 use byteorder::{BigEndian, ByteOrder};
-use hmac::{Hmac, Mac};
-use md5::{Digest, Md5};
 use rand::Rng;
-
-type HmacMd5 = Hmac<Md5>;
 
 pub mod packet_codes;
 pub mod packet_parsing_error;
+pub mod radius_password;
 pub mod rfc_attributes;
+pub mod utils;
 
 pub struct RadiusPacket {
     pub identifier: u8,
@@ -127,7 +125,7 @@ impl RadiusPacket {
                Buffer.BlockCopy(authenticator, 0, packetBytesArray, 4, 16);
            } */
 
-        let authenticator_bytes = calculate_response_authenticator(
+        let authenticator_bytes = utils::calculate_response_authenticator(
             &header_bytes,
             &self.request_authenticator,
             &attribute_bytes,
@@ -170,7 +168,7 @@ impl RadiusPacket {
 
         if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
             || packet.packetcode == packet_codes::PacketCode::DisconnectRequest)
-            && calculate_request_authenticator(
+            && utils::calculate_request_authenticator(
                 &packet_bytes[0..4].try_into().unwrap(),
                 &packet_bytes[20..],
                 secret_bytes,
@@ -209,7 +207,7 @@ impl RadiusPacket {
 
         if message_authenticator_position != 0 {
             println!("Found message authenticator!");
-            let calculated_message_authenticator = calculate_message_authenticator(
+            let calculated_message_authenticator = utils::calculate_message_authenticator(
                 packet_bytes,
                 secret_bytes,
                 message_authenticator_position,
@@ -228,79 +226,9 @@ impl RadiusPacket {
     }
 }
 
-/// Creates a response authenticator
-/// Response authenticator = MD5(Code+ID+Length+RequestAuth+Attributes+Secret)
-/// Actually this means it is the response packet with the request authenticator and secret...
-pub fn calculate_authenticator(
-    packet_header_bytes: &[u8; 4],
-    authenticator: &[u8; 16],
-    attribute_bytes: &[u8],
-    secret_bytes: &[u8],
-) -> [u8; 16] {
-    return Md5::digest(
-        [
-            packet_header_bytes as &[u8],
-            authenticator,
-            attribute_bytes,
-            secret_bytes,
-        ]
-        .concat(),
-    )
-    .into();
-}
-
-/// Calculate the request authenticator used in accounting, disconnect and coa requests
-pub fn calculate_request_authenticator(
-    packet_header_bytes: &[u8; 4],
-    attribute_bytes: &[u8],
-    secret_bytes: &[u8],
-) -> [u8; 16] {
-    return calculate_authenticator(packet_header_bytes, &[0; 16], attribute_bytes, secret_bytes);
-}
-
-/// Calculate the response authenticator using authenticator from request
-pub fn calculate_response_authenticator(
-    packet_header_bytes: &[u8; 4],
-    request_authenticator: &[u8; 16],
-    attribute_bytes: &[u8],
-    secret_bytes: &[u8],
-) -> [u8; 16] {
-    return calculate_authenticator(
-        packet_header_bytes,
-        request_authenticator,
-        attribute_bytes,
-        secret_bytes,
-    );
-}
-
-/// Calculate the message authenticator found in attribute
-pub fn calculate_message_authenticator(
-    packet_bytes: &[u8],
-    secret_bytes: &[u8],
-    message_authenticator_position: usize,
-    authenticator: Option<&[u8; 16]>,
-) -> [u8; 16] {
-    let bytes = [
-        &packet_bytes[0..4],
-        authenticator.unwrap_or(&packet_bytes[4..20].try_into().unwrap()),
-        &packet_bytes[20..message_authenticator_position + 2],
-        &[0; 16],
-        &packet_bytes[message_authenticator_position + 2 + 16..],
-    ]
-    .concat();
-
-    println!("Original packet: {:?}", packet_bytes);
-    println!("zeroed packet: {:?}", bytes);
-
-    let mut mac = HmacMd5::new_from_slice(secret_bytes).unwrap();
-    mac.update(&bytes);
-
-    return mac.finalize().into_bytes().into();
-}
-
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::Ipv4Addr;
 
     use byteorder::{BigEndian, ByteOrder};
 
@@ -416,7 +344,7 @@ mod tests {
 
         // setting this manually here to match expected bytes... it is actually random
         packet.authenticator = hex::decode("00000000000000000000000000000000")
-        // packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
+            // packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
             .unwrap()
             .try_into()
             .unwrap();
@@ -427,10 +355,10 @@ mod tests {
         packet
             .attributes
             .push((2, "arctangent".as_bytes().to_vec()));
-            
+
         packet
             .attributes
-            .push((4, Ipv4Addr::new(192, 168, 1, 16).octets().to_vec())); // todo fix.. this should be bytes...
+            .push((4, Ipv4Addr::new(192, 168, 1, 16).octets().to_vec()));
 
         let mut buffer: [u8; 4] = [0; 4];
         BigEndian::write_u32(&mut buffer, 3);
