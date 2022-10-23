@@ -40,7 +40,7 @@ fn main() -> std::io::Result<()> {
                     // todo packet handlers
                     socket.send_to(&response_packet_bytes, &src)?;
                 }
-                Err(e) => println!("Packet parsing went haywire: {}", e.message),
+                Err(e) => println!("Packet parsing went haywire: {}", e),
             }
         }
     }
@@ -77,7 +77,7 @@ authenticator: {:?}
                 println!("Attribute {} : {:?}", attribute.0, attribute.1);
             }
         }
-        Err(e) => println!("Packet parsing went haywire: {}", e.message),
+        Err(e) => println!("Packet parsing went haywire: {}", e),
     }
 
     // let secret = "somesecret";

@@ -1,17 +1,24 @@
 use std::fmt;
 
-pub struct PacketParsingError {
-    pub message: String,
+#[derive(Debug, Clone)]
+pub enum PacketParsingError {
+    InvalidMessageAuthenticator,
+    InvalidLength,
+    InvalidRequestAuthenticator,
 }
 
 impl fmt::Display for PacketParsingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed parsing packet")
-    }
-}
-
-impl fmt::Debug for PacketParsingError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{ file: {}, line: {} }}", file!(), line!())
+        match self {
+            PacketParsingError::InvalidLength => write!(f, "Packed length mismatch"),
+            PacketParsingError::InvalidMessageAuthenticator => write!(
+                f,
+                "Invalid message authenticator attribute found in packet, check secret?"
+            ),
+            PacketParsingError::InvalidRequestAuthenticator => write!(
+                f,
+                "Invalid request authenticator found in packet, check secret?"
+            ),
+        }
     }
 }

@@ -150,9 +150,7 @@ impl RadiusPacket {
 
         // we can probably allow the buffer to include extra bytes at the end, but these will be ignored
         if packet_bytes.len() < length_from_packet.into() {
-            return Err(packet_parsing_error::PacketParsingError {
-                message: "Package length mismatch...".to_string(),
-            });
+            return Err(packet_parsing_error::PacketParsingError::InvalidLength);
         }
 
         let packet_bytes = &packet_bytes[0..length_from_packet];
@@ -178,9 +176,7 @@ impl RadiusPacket {
                 secret_bytes,
             ) != packet.authenticator
         {
-            return Err(packet_parsing_error::PacketParsingError {
-                message: "Invalid request authenticator in packet, check secret?".to_string(),
-            });
+            return Err(packet_parsing_error::PacketParsingError::InvalidRequestAuthenticator);
         }
 
         // The rest are attribute value pairs
@@ -197,49 +193,15 @@ impl RadiusPacket {
             // Vendor specific attribute
             if *typecode == 26 {
                 // do some parsing eh
-                /*
-                    var vsa = new VendorSpecificAttribute(contentBytes);
-                    var vendorAttributeDefinition = _radiusDictionary.GetVendorAttribute(vsa.VendorId, vsa.VendorCode);
-                    if (vendorAttributeDefinition == null)
-                    {
-                        _logger.LogInformation($"Unknown vsa: {vsa.VendorId}:{vsa.VendorCode}");
-                    }
-                    else
-                    {
-                        try
-                        {
-                            var content = ParseContentBytes(vsa.Value, vendorAttributeDefinition.Type, typecode, packet.Authenticator, packet.SharedSecret);
-                            packet.AddAttributeObject(vendorAttributeDefinition.Name, content);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, $"Something went wrong with vsa {vendorAttributeDefinition.Name}");
-                        }
-                    }
-                */
             } else {
                 if *typecode == 80 {
                     message_authenticator_position = position; // have to save the position to be able to zero it when validating the packet
                 }
 
+                // do some parsing...
                 packet
                     .attributes
                     .extend([(typecode.to_owned(), attribute_content_bytes.to_vec())]);
-
-                /*
-                    var attributeDefinition = _radiusDictionary.GetAttribute(typecode);
-
-                    try
-                    {
-                        var content = ParseContentBytes(contentBytes, attributeDefinition.Type, typecode, packet.Authenticator, packet.SharedSecret);
-                        packet.AddAttributeObject(attributeDefinition.Name, content);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Something went wrong with {attributeDefinition.Name}");
-                        _logger.LogDebug($"Attribute bytes: {contentBytes.ToHexString()}");
-                    }
-                */
             }
 
             position += attribute_length;
@@ -258,9 +220,7 @@ impl RadiusPacket {
                 [message_authenticator_position + 2..message_authenticator_position + 2 + 16];
 
             if expected_message_authenticator != calculated_message_authenticator {
-                return Err(packet_parsing_error::PacketParsingError {
-                    message: "Invalid message authenticator in packet, check secret?".to_string(),
-                });
+                return Err(packet_parsing_error::PacketParsingError::InvalidMessageAuthenticator);
             }
         }
 
@@ -340,6 +300,8 @@ pub fn calculate_message_authenticator(
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
     use byteorder::{BigEndian, ByteOrder};
 
     use super::RadiusPacket;
@@ -453,19 +415,22 @@ mod tests {
             RadiusPacket::new_request(super::packet_codes::PacketCode::AccessRequest, 0);
 
         // setting this manually here to match expected bytes... it is actually random
-        packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
+        packet.authenticator = hex::decode("00000000000000000000000000000000")
+        // packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
             .unwrap()
             .try_into()
             .unwrap();
 
         // this makes no sense since it should be done in the packet.. but just testing anyway...
         packet.attributes.push((1, "nemo".as_bytes().to_vec()));
+
         packet
             .attributes
             .push((2, "arctangent".as_bytes().to_vec()));
+            
         packet
             .attributes
-            .push((4, "192.168.1.16".as_bytes().to_vec())); // todo fix.. this should be bytes...
+            .push((4, Ipv4Addr::new(192, 168, 1, 16).octets().to_vec())); // todo fix.. this should be bytes...
 
         let mut buffer: [u8; 4] = [0; 4];
         BigEndian::write_u32(&mut buffer, 3);
