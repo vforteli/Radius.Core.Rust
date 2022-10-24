@@ -5,6 +5,7 @@ pub enum PacketParsingError {
     InvalidMessageAuthenticator,
     InvalidLength,
     InvalidRequestAuthenticator,
+    PasswordDecryptionFailed,
 }
 
 impl fmt::Display for PacketParsingError {
@@ -19,6 +20,9 @@ impl fmt::Display for PacketParsingError {
                 f,
                 "Invalid request authenticator found in packet, check secret?"
             ),
+            PacketParsingError::PasswordDecryptionFailed => {
+                write!(f, "Password decryption failed?!")
+            }
         }
     }
 }

@@ -125,12 +125,16 @@ impl RadiusPacket {
                Buffer.BlockCopy(authenticator, 0, packetBytesArray, 4, 16);
            } */
 
-        let authenticator_bytes = utils::calculate_response_authenticator(
-            &header_bytes,
-            &self.request_authenticator,
-            &attribute_bytes,
-            secret_bytes,
-        );
+        // todo ooooh boy.. fix this
+        let authenticator_bytes: [u8; 16] = match self.packetcode {
+            packet_codes::PacketCode::AccessRequest => self.authenticator,
+            _ => utils::calculate_response_authenticator(
+                &header_bytes,
+                &self.request_authenticator,
+                &attribute_bytes,
+                secret_bytes,
+            ),
+        };
 
         let mut response_packet_bytes: Vec<u8> = Vec::new();
         response_packet_bytes.extend(header_bytes);
@@ -231,6 +235,8 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use byteorder::{BigEndian, ByteOrder};
+
+    use crate::radius_packet;
 
     use super::RadiusPacket;
 
@@ -343,8 +349,8 @@ mod tests {
             RadiusPacket::new_request(super::packet_codes::PacketCode::AccessRequest, 0);
 
         // setting this manually here to match expected bytes... it is actually random
-        packet.authenticator = hex::decode("00000000000000000000000000000000")
-            // packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
+        // packet.authenticator = hex::decode("00000000000000000000000000000000")
+        packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
             .unwrap()
             .try_into()
             .unwrap();
@@ -352,9 +358,14 @@ mod tests {
         // this makes no sense since it should be done in the packet.. but just testing anyway...
         packet.attributes.push((1, "nemo".as_bytes().to_vec()));
 
-        packet
-            .attributes
-            .push((2, "arctangent".as_bytes().to_vec()));
+        packet.attributes.push((
+            2,
+            radius_packet::radius_password::encrypt(
+                secret_bytes,
+                &packet.authenticator,
+                "arctangent".as_bytes(),
+            ),
+        ));
 
         packet
             .attributes
