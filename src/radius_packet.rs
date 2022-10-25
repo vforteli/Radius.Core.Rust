@@ -212,11 +212,10 @@ impl RadiusPacket {
                     message_authenticator_position = position; // have to save the position to be able to zero it when validating the packet
                 }
 
-                // do some parsing...
-                packet.attributes.extend([RfcAttribute {
+                packet.attributes.push(RfcAttribute {
                     code: typecode.to_owned(),
                     value: attribute_content_bytes.to_vec(),
-                }])
+                });
             }
 
             position += attribute_length;
@@ -251,7 +250,7 @@ mod tests {
 
     use crate::radius_packet::{self, rfc_attribute::RfcAttribute};
 
-    use super::RadiusPacket;
+    use super::*;
 
     #[test]
     fn parse_packet_valid_message_authenticator() {
