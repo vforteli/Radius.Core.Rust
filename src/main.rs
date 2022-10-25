@@ -26,7 +26,7 @@ fn main() -> std::io::Result<()> {
                     );
 
                     for attribute in packet.attributes {
-                        println!("Attribute {} : {:?}", attribute.0, attribute.1);
+                        println!("Attribute {} : {:?}", attribute.code, attribute.value);
                     }
 
                     let response_packet = radius_packet::RadiusPacket::new_response(
@@ -74,7 +74,7 @@ authenticator: {:?}
             );
 
             for attribute in packet.attributes {
-                println!("Attribute {} : {:?}", attribute.0, attribute.1);
+                println!("Attribute {} : {:?}", attribute.code, attribute.value);
             }
         }
         Err(e) => println!("Packet parsing went haywire: {}", e),

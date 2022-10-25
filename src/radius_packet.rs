@@ -3,30 +3,38 @@
 use byteorder::{BigEndian, ByteOrder};
 use rand::Rng;
 
+use self::rfc_attribute::RfcAttribute;
+
 pub mod packet_codes;
 pub mod packet_parsing_error;
 pub mod radius_password;
+pub mod rfc_attribute;
 pub mod rfc_attributes;
 pub mod utils;
+
+const PACKET_HEADER_SIZE: usize = 4;
+const AUTHENTICATOR_SIZE: usize = 16;
+
+type Authenticator = [u8; 16];
 
 pub struct RadiusPacket {
     pub identifier: u8,
     pub packetcode: packet_codes::PacketCode,
-    pub authenticator: [u8; 16],
-    pub request_authenticator: [u8; 16],
-    pub attributes: Vec<(u8, Vec<u8>)>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
+    pub authenticator: Authenticator,
+    pub request_authenticator: Authenticator,
+    pub attributes: Vec<RfcAttribute>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
 }
 
 impl RadiusPacket {
     pub fn new_response(
         packetcode: packet_codes::PacketCode,
         identifier: u8,
-        request_authenticator: [u8; 16],
+        request_authenticator: Authenticator,
     ) -> Self {
         Self {
             packetcode,
             identifier,
-            authenticator: [0; 16],
+            authenticator: [0; AUTHENTICATOR_SIZE],
             request_authenticator,
             attributes: Vec::new(),
         }
@@ -51,24 +59,28 @@ impl RadiusPacket {
         Self {
             packetcode,
             identifier,
-            authenticator: rand::thread_rng().gen::<[u8; 16]>(),
-            request_authenticator: [0; 16],
+            authenticator: rand::thread_rng().gen::<Authenticator>(),
+            request_authenticator: [0; AUTHENTICATOR_SIZE],
             attributes: Vec::new(),
         }
     }
 
     pub fn get_bytes(self, secret_bytes: &[u8]) -> Vec<u8> {
-        let mut header_bytes: [u8; 4] = [self.packetcode as u8, self.identifier, 0, 0];
+        let mut header_bytes: [u8; PACKET_HEADER_SIZE] =
+            [self.packetcode as u8, self.identifier, 0, 0];
 
         let mut attribute_bytes: Vec<u8> = Vec::new();
         for attribute in self.attributes {
-            println!("adding attribute {} : {:?}", attribute.0, attribute.1);
-            attribute_bytes.extend([attribute.0]);
-            attribute_bytes.extend([(attribute.1.len() as u8) + 2]);
-            attribute_bytes.extend(attribute.1);
+            println!(
+                "adding attribute {} : {:?}",
+                attribute.code, attribute.value
+            );
+            attribute_bytes.extend([attribute.code]);
+            attribute_bytes.extend([(attribute.value.len() as u8) + 2]);
+            attribute_bytes.extend(attribute.value);
         }
 
-        let packet_length_bytes = 4 + 16 + attribute_bytes.len(); // header + authenticator + attributes
+        let packet_length_bytes = PACKET_HEADER_SIZE + AUTHENTICATOR_SIZE + attribute_bytes.len(); // header + authenticator + attributes
 
         BigEndian::write_u16(
             &mut header_bytes[2..4],
@@ -126,7 +138,7 @@ impl RadiusPacket {
            } */
 
         // todo ooooh boy.. fix this
-        let authenticator_bytes: [u8; 16] = match self.packetcode {
+        let authenticator_bytes: Authenticator = match self.packetcode {
             packet_codes::PacketCode::AccessRequest => self.authenticator,
             _ => utils::calculate_response_authenticator(
                 &header_bytes,
@@ -173,7 +185,7 @@ impl RadiusPacket {
         if (packet.packetcode == packet_codes::PacketCode::AccountingRequest
             || packet.packetcode == packet_codes::PacketCode::DisconnectRequest)
             && utils::calculate_request_authenticator(
-                &packet_bytes[0..4].try_into().unwrap(),
+                &packet_bytes[0..PACKET_HEADER_SIZE].try_into().unwrap(),
                 &packet_bytes[20..],
                 secret_bytes,
             ) != packet.authenticator
@@ -201,9 +213,10 @@ impl RadiusPacket {
                 }
 
                 // do some parsing...
-                packet
-                    .attributes
-                    .extend([(typecode.to_owned(), attribute_content_bytes.to_vec())]);
+                packet.attributes.extend([RfcAttribute {
+                    code: typecode.to_owned(),
+                    value: attribute_content_bytes.to_vec(),
+                }])
             }
 
             position += attribute_length;
@@ -236,7 +249,7 @@ mod tests {
 
     use byteorder::{BigEndian, ByteOrder};
 
-    use crate::radius_packet;
+    use crate::radius_packet::{self, rfc_attribute::RfcAttribute};
 
     use super::RadiusPacket;
 
@@ -356,25 +369,32 @@ mod tests {
             .unwrap();
 
         // this makes no sense since it should be done in the packet.. but just testing anyway...
-        packet.attributes.push((1, "nemo".as_bytes().to_vec()));
+        packet.attributes.push(RfcAttribute {
+            code: 1,
+            value: "nemo".as_bytes().to_vec(),
+        });
 
-        packet.attributes.push((
-            2,
-            radius_packet::radius_password::encrypt(
+        packet.attributes.push(RfcAttribute {
+            code: 2,
+            value: radius_packet::radius_password::encrypt(
                 secret_bytes,
                 &packet.authenticator,
                 "arctangent".as_bytes(),
             ),
-        ));
+        });
 
-        packet
-            .attributes
-            .push((4, Ipv4Addr::new(192, 168, 1, 16).octets().to_vec()));
+        packet.attributes.push(RfcAttribute {
+            code: 4,
+            value: Ipv4Addr::new(192, 168, 1, 16).octets().to_vec(),
+        });
 
         let mut buffer: [u8; 4] = [0; 4];
         BigEndian::write_u32(&mut buffer, 3);
 
-        packet.attributes.push((5, buffer.to_vec()));
+        packet.attributes.push(RfcAttribute {
+            code: 5,
+            value: buffer.to_vec(),
+        });
 
         let packet_bytes = packet.get_bytes(secret_bytes);
 
