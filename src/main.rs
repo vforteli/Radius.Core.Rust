@@ -1,5 +1,7 @@
 use std::net::UdpSocket;
 
+use crate::radius_packet::rfc_attribute::RfcAttribute;
+
 mod radius_packet;
 
 fn main() -> std::io::Result<()> {
@@ -26,6 +28,7 @@ fn main() -> std::io::Result<()> {
                     );
 
                     for attribute in packet.attributes {
+                        let attribute: RfcAttribute = attribute.into();
                         println!("Attribute {} : {:?}", attribute.code, attribute.value);
                     }
 
@@ -74,6 +77,7 @@ authenticator: {:?}
             );
 
             for attribute in packet.attributes {
+                let attribute: RfcAttribute = attribute.into();
                 println!("Attribute {} : {:?}", attribute.code, attribute.value);
             }
         }

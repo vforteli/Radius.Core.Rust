@@ -3,7 +3,7 @@
 use byteorder::{BigEndian, ByteOrder};
 use rand::Rng;
 
-use self::rfc_attribute::RfcAttribute;
+use self::{rfc_attribute::RfcAttribute, rfc_attributes::RfcAttributes};
 
 pub mod packet_codes;
 pub mod packet_parsing_error;
@@ -22,7 +22,7 @@ pub struct RadiusPacket {
     pub packetcode: packet_codes::PacketCode,
     pub authenticator: Authenticator,
     pub request_authenticator: Authenticator,
-    pub attributes: Vec<RfcAttribute>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
+    pub attributes: Vec<RfcAttributes>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
 }
 
 impl RadiusPacket {
@@ -71,6 +71,10 @@ impl RadiusPacket {
 
         let mut attribute_bytes: Vec<u8> = Vec::new();
         for attribute in self.attributes {
+            println!("adding attribute {:?}", attribute);
+
+            let attribute: RfcAttribute = attribute.into();
+
             println!(
                 "adding attribute {} : {:?}",
                 attribute.code, attribute.value
@@ -212,10 +216,14 @@ impl RadiusPacket {
                     message_authenticator_position = position; // have to save the position to be able to zero it when validating the packet
                 }
 
-                packet.attributes.push(RfcAttribute {
-                    code: typecode.to_owned(),
-                    value: attribute_content_bytes.to_vec(),
-                });
+                println!("Attribute {} : {:?}", typecode, attribute_content_bytes);
+                packet.attributes.push(
+                    RfcAttribute {
+                        code: typecode.to_owned(),
+                        value: attribute_content_bytes.to_vec(),
+                    }
+                    .into(),
+                );
             }
 
             position += attribute_length;
@@ -245,10 +253,6 @@ impl RadiusPacket {
 #[cfg(test)]
 mod tests {
     use std::net::Ipv4Addr;
-
-    use byteorder::{BigEndian, ByteOrder};
-
-    use crate::radius_packet::{self, rfc_attribute::RfcAttribute};
 
     use super::*;
 
@@ -367,58 +371,23 @@ mod tests {
             .try_into()
             .unwrap();
 
-        // this makes no sense since it should be done in the packet.. but just testing anyway...
-        packet.attributes.push(RfcAttribute {
-            code: 1,
-            value: "nemo".as_bytes().to_vec(),
-        });
-
-        packet.attributes.push(RfcAttribute {
-            code: 2,
-            value: radius_packet::radius_password::encrypt(
+        packet
+            .attributes
+            .push(RfcAttributes::UserName("nemo".to_string()));
+        packet
+            .attributes
+            .push(RfcAttributes::UserPassword(radius_password::encrypt(
                 secret_bytes,
                 &packet.authenticator,
                 "arctangent".as_bytes(),
-            ),
-        });
-
-        packet.attributes.push(RfcAttribute {
-            code: 4,
-            value: Ipv4Addr::new(192, 168, 1, 16).octets().to_vec(),
-        });
-
-        let mut buffer: [u8; 4] = [0; 4];
-        BigEndian::write_u32(&mut buffer, 3);
-
-        packet.attributes.push(RfcAttribute {
-            code: 5,
-            value: buffer.to_vec(),
-        });
+            )));
+        packet
+            .attributes
+            .push(RfcAttributes::NasIpAddress(Ipv4Addr::new(192, 168, 1, 16)));
+        packet.attributes.push(RfcAttributes::NASPort(3));
 
         let packet_bytes = packet.get_bytes(secret_bytes);
 
         assert_eq!(expected_bytes, packet_bytes);
     }
-    /*
-    *   /// <summary>
-       /// Create packet and verify bytes
-       /// Example from https://tools.ietf.org/html/rfc2865
-       /// </summary>
-       [TestCase]
-       public void TestCreateAccessRequestPacket()
-       {
-           var expected = "010000380f403f9473978057bd83d5cb98f4227a01066e656d6f02120dbe708d93d413ce3196e43f782a0aee0406c0a80110050600000003";
-           var secret = "xyzzy5461";
-
-           var packet = new RadiusPacket(PacketCode.AccessRequest, 0, secret);
-           packet.Authenticator = Utils.StringToByteArray("0f403f9473978057bd83d5cb98f4227a");
-           packet.AddAttribute("User-Name", "nemo");
-           packet.AddAttribute("User-Password", "arctangent");
-           packet.AddAttribute("NAS-IP-Address", IPAddress.Parse("192.168.1.16"));
-           packet.AddAttribute("NAS-Port", 3);
-
-           var radiusPacketParser = new RadiusPacketParser(NullLogger<RadiusPacketParser>.Instance, GetDictionary());
-           Assert.AreEqual(expected, radiusPacketParser.GetBytes(packet).ToHexString());
-       }
-    */
 }
