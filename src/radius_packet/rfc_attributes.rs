@@ -4,9 +4,9 @@ use std::net::Ipv4Addr;
 
 use byteorder::{BigEndian, ByteOrder};
 
-use super::rfc_attribute::RfcAttribute;
+use super::rfc_attribute::RfcAttributeValue;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[repr(u8)]
 pub enum ServiceType {
     Login = 1,
@@ -20,28 +20,45 @@ pub enum ServiceType {
     CallbackNASPrompt = 9,
     CallCheck = 10,
     CallbackAdministrative = 11,
+    Voice = 12,
+    Fax = 13,
+    ModemRelay = 14,
+    IAPPRegister = 15,
+    IAPPAPCheck = 16,
+    AuthorizeOnly = 17,
+    FramedManagement = 18,
+    AdditionalAuthorization = 19,
+    Unknown = 0,
 }
 
 impl From<u8> for ServiceType {
     fn from(value: u8) -> Self {
         match value {
-            1 => ServiceType::Login,
-            2 => ServiceType::Framed,
-            3 => ServiceType::CallbackLogin,
-            4 => ServiceType::CallbackFramed,
-            5 => ServiceType::Outbound,
-            6 => ServiceType::Administrative,
-            7 => ServiceType::NASPrompt,
-            8 => ServiceType::AuthenticateOnly,
-            9 => ServiceType::CallbackNASPrompt,
-            10 => ServiceType::CallCheck,
-            11 => ServiceType::CallbackAdministrative,
-            _ => panic!("ok this shouldnt be a panic but a result maybe..."),
+            1 => Self::Login,
+            2 => Self::Framed,
+            3 => Self::CallbackLogin,
+            4 => Self::CallbackFramed,
+            5 => Self::Outbound,
+            6 => Self::Administrative,
+            7 => Self::NASPrompt,
+            8 => Self::AuthenticateOnly,
+            9 => Self::CallbackNASPrompt,
+            10 => Self::CallCheck,
+            11 => Self::CallbackAdministrative,
+            12 => Self::Voice,
+            13 => Self::Fax,
+            14 => Self::ModemRelay,
+            15 => Self::IAPPRegister,
+            16 => Self::IAPPAPCheck,
+            17 => Self::AuthorizeOnly,
+            18 => Self::FramedManagement,
+            19 => Self::AdditionalAuthorization,
+            _ => Self::Unknown,
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[repr(u8)]
 pub enum AcctStatusType {
     Start = 1,
@@ -49,24 +66,25 @@ pub enum AcctStatusType {
     InterimUpdate = 3,
     AccountingOn = 7,
     AccountingOff = 8,
+    Unknown = 0,
 }
 
 impl From<u8> for AcctStatusType {
     fn from(value: u8) -> Self {
         match value {
-            1 => AcctStatusType::Start,
-            2 => AcctStatusType::Stop,
-            3 => AcctStatusType::InterimUpdate,
-            7 => AcctStatusType::AccountingOn,
-            8 => AcctStatusType::AccountingOff,
-            _ => panic!("ok this shouldnt be a panic but a result maybe..."),
+            1 => Self::Start,
+            2 => Self::Stop,
+            3 => Self::InterimUpdate,
+            7 => Self::AccountingOn,
+            8 => Self::AccountingOff,
+            _ => Self::Unknown, // actually just lazy and couldnt be bothered to add all
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
-pub enum RfcAttributes {
+pub enum RfcAttributeType {
     UserName(String),
     UserPassword(Vec<u8>),
     ChapPassword(Vec<u8>),
@@ -76,82 +94,85 @@ pub enum RfcAttributes {
     AcctStatusType(AcctStatusType),
     AcctSessionId(String),
     MessageAuthenticator(Vec<u8>),
+    Unknown(Vec<u8>),
 }
 
-impl Into<u8> for RfcAttributes {
+impl Into<u8> for RfcAttributeType {
     fn into(self) -> u8 {
         match self {
-            RfcAttributes::UserName(_) => 1,
-            RfcAttributes::UserPassword(_) => 2,
-            RfcAttributes::ChapPassword(_) => 3,
-            RfcAttributes::NasIpAddress(_) => 4,
-            RfcAttributes::NASPort(_) => 5,
-            RfcAttributes::ServiceType(_) => 6,
-            RfcAttributes::AcctStatusType(_) => 40,
-            RfcAttributes::AcctSessionId(_) => 44,
-            RfcAttributes::MessageAuthenticator(_) => 80,
+            Self::UserName(_) => 1,
+            Self::UserPassword(_) => 2,
+            Self::ChapPassword(_) => 3,
+            Self::NasIpAddress(_) => 4,
+            Self::NASPort(_) => 5,
+            Self::ServiceType(_) => 6,
+            Self::AcctStatusType(_) => 40,
+            Self::AcctSessionId(_) => 44,
+            Self::MessageAuthenticator(_) => 80,
+            Self::Unknown(_) => 0,
         }
     }
 }
 
 // todo this stuff needs to be generalized and probably generated
-impl Into<RfcAttribute> for RfcAttributes {
-    fn into(self) -> RfcAttribute {
+impl Into<RfcAttributeValue> for RfcAttributeType {
+    fn into(self) -> RfcAttributeValue {
         match self {
-            RfcAttributes::UserName(v) => RfcAttribute {
+            Self::UserName(v) => RfcAttributeValue {
                 code: 1,
                 value: v.as_bytes().to_vec(),
             },
-            RfcAttributes::UserPassword(v) => RfcAttribute { code: 2, value: v },
-            RfcAttributes::ChapPassword(v) => RfcAttribute { code: 2, value: v },
-            RfcAttributes::NasIpAddress(v) => RfcAttribute {
+            Self::UserPassword(v) => RfcAttributeValue { code: 2, value: v },
+            Self::ChapPassword(v) => RfcAttributeValue { code: 2, value: v },
+            Self::NasIpAddress(v) => RfcAttributeValue {
                 code: 4,
                 value: v.octets().to_vec(),
             },
-            RfcAttributes::NASPort(v) => {
+            Self::NASPort(v) => {
                 let mut buffer: [u8; 4] = [0; 4];
                 BigEndian::write_u32(&mut buffer, v);
-                RfcAttribute {
+                RfcAttributeValue {
                     code: 5,
                     value: buffer.to_vec(),
                 }
             }
-            RfcAttributes::ServiceType(v) => RfcAttribute {
+            Self::ServiceType(v) => RfcAttributeValue {
                 code: 6,
                 value: [0, 0, 0, v as u8].to_vec(),
             },
-            RfcAttributes::AcctStatusType(v) => RfcAttribute {
+            Self::AcctStatusType(v) => RfcAttributeValue {
                 code: 40,
                 value: [0, 0, 0, v as u8].to_vec(),
             },
-            RfcAttributes::AcctSessionId(v) => RfcAttribute {
+            Self::AcctSessionId(v) => RfcAttributeValue {
                 code: 44,
                 value: v.as_bytes().to_vec(),
             },
-            RfcAttributes::MessageAuthenticator(v) => RfcAttribute { code: 80, value: v },
+            Self::MessageAuthenticator(v) => RfcAttributeValue { code: 80, value: v },
+            Self::Unknown(v) => RfcAttributeValue { code: 0, value: v },
         }
     }
 }
 
 // uh.. this is not safe...
-impl From<RfcAttribute> for RfcAttributes {
-    fn from(attr: RfcAttribute) -> Self {
+impl From<RfcAttributeValue> for RfcAttributeType {
+    fn from(attr: RfcAttributeValue) -> Self {
         match attr.code {
-            1 => RfcAttributes::UserName(String::from_utf8(attr.value).unwrap()),
-            2 => RfcAttributes::UserPassword(attr.value),
-            3 => RfcAttributes::ChapPassword(attr.value),
-            4 => RfcAttributes::NasIpAddress(Ipv4Addr::new(
+            1 => Self::UserName(String::from_utf8(attr.value).unwrap()),
+            2 => Self::UserPassword(attr.value),
+            3 => Self::ChapPassword(attr.value),
+            4 => Self::NasIpAddress(Ipv4Addr::new(
                 attr.value[0],
                 attr.value[1],
                 attr.value[2],
                 attr.value[3],
             )),
-            5 => RfcAttributes::NASPort(BigEndian::read_u32(&attr.value)),
-            6 => RfcAttributes::ServiceType(attr.value[3].into()),
-            40 => RfcAttributes::AcctStatusType(attr.value[3].into()),
-            44 => RfcAttributes::AcctSessionId(String::from_utf8(attr.value).unwrap()),
-            80 => RfcAttributes::MessageAuthenticator(attr.value),
-            _ => panic!("stop being lazy and create a generator for these"),
+            5 => Self::NASPort(BigEndian::read_u32(&attr.value)),
+            6 => Self::ServiceType(attr.value[3].into()),
+            40 => Self::AcctStatusType(attr.value[3].into()),
+            44 => Self::AcctSessionId(String::from_utf8(attr.value).unwrap()),
+            80 => Self::MessageAuthenticator(attr.value),
+            _ => Self::Unknown(attr.value), // unknown aka too lazy to create the dictionary parser and include all rfc attributes
         }
     }
 }

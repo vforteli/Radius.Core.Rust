@@ -3,7 +3,7 @@
 use byteorder::{BigEndian, ByteOrder};
 use rand::Rng;
 
-use self::{rfc_attribute::RfcAttribute, rfc_attributes::RfcAttributes};
+use self::{rfc_attribute::RfcAttributeValue, rfc_attributes::RfcAttributeType};
 
 pub mod packet_codes;
 pub mod packet_parsing_error;
@@ -22,7 +22,7 @@ pub struct RadiusPacket {
     pub packetcode: packet_codes::PacketCode,
     pub authenticator: Authenticator,
     pub request_authenticator: Authenticator,
-    pub attributes: Vec<RfcAttributes>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
+    pub attributes: Vec<RfcAttributeType>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
 }
 
 impl RadiusPacket {
@@ -73,7 +73,7 @@ impl RadiusPacket {
         for attribute in self.attributes {
             println!("adding attribute {:?}", attribute);
 
-            let attribute: RfcAttribute = attribute.into();
+            let attribute: RfcAttributeValue = attribute.into();
 
             println!(
                 "adding attribute {} : {:?}",
@@ -218,7 +218,7 @@ impl RadiusPacket {
 
                 println!("Attribute {} : {:?}", typecode, attribute_content_bytes);
                 packet.attributes.push(
-                    RfcAttribute {
+                    RfcAttributeValue {
                         code: typecode.to_owned(),
                         value: attribute_content_bytes.to_vec(),
                     }
@@ -373,18 +373,18 @@ mod tests {
 
         packet
             .attributes
-            .push(RfcAttributes::UserName("nemo".to_string()));
+            .push(RfcAttributeType::UserName("nemo".to_string()));
         packet
             .attributes
-            .push(RfcAttributes::UserPassword(radius_password::encrypt(
+            .push(RfcAttributeType::UserPassword(radius_password::encrypt(
                 secret_bytes,
                 &packet.authenticator,
                 "arctangent".as_bytes(),
             )));
         packet
             .attributes
-            .push(RfcAttributes::NasIpAddress(Ipv4Addr::new(192, 168, 1, 16)));
-        packet.attributes.push(RfcAttributes::NASPort(3));
+            .push(RfcAttributeType::NasIpAddress(Ipv4Addr::new(192, 168, 1, 16)));
+        packet.attributes.push(RfcAttributeType::NASPort(3));
 
         let packet_bytes = packet.get_bytes(secret_bytes);
 

@@ -1,6 +1,9 @@
 use std::net::UdpSocket;
 
-use crate::radius_packet::rfc_attribute::RfcAttribute;
+use crate::radius_packet::{
+    packet_codes::PacketCode, radius_password::decrypt, rfc_attribute::RfcAttributeValue,
+    rfc_attributes::RfcAttributeType, RadiusPacket,
+};
 
 mod radius_packet;
 
@@ -27,21 +30,50 @@ fn main() -> std::io::Result<()> {
                         packet.identifier, packet.packetcode, packet.authenticator,
                     );
 
-                    for attribute in packet.attributes {
-                        let attribute: RfcAttribute = attribute.into();
-                        println!("Attribute {} : {:?}", attribute.code, attribute.value);
+                    for attribute in packet.attributes.iter() {
+                        println!("Attribute {:?}", attribute);
                     }
 
-                    let response_packet = radius_packet::RadiusPacket::new_response(
-                        radius_packet::packet_codes::PacketCode::AccessAccept,
-                        packet.identifier,
-                        packet.authenticator,
-                    );
+                    let response_packet = match packet.packetcode {
+                        PacketCode::AccessRequest => {
+                            // yes yes, this should be done in one go...
+                            let username = packet.attributes.iter().find_map(|a| match a {
+                                RfcAttributeType::UserName(u) => Some(u),
+                                _ => None,
+                            });
 
-                    let response_packet_bytes = response_packet.get_bytes(&secret);
+                            let password = packet.attributes.iter().find_map(|a| match a {
+                                RfcAttributeType::UserPassword(u) => {
+                                    Some(decrypt(secret, &packet.authenticator, u))
+                                }
+                                _ => None,
+                            });
 
-                    // todo packet handlers
-                    socket.send_to(&response_packet_bytes, &src)?;
+                            println!("Username {:?}, password {:?}", username, password);
+
+                            let response_packet_code = if username.unwrap() == "watho"
+                                && password.unwrap().unwrap() == "sup"
+                            {
+                                PacketCode::AccessAccept
+                            } else {
+                                PacketCode::AccessReject
+                            };
+
+                            Some(RadiusPacket::new_response(
+                                response_packet_code,
+                                packet.identifier,
+                                packet.authenticator,
+                            ))
+                        }
+                        _ => None,
+                    };
+
+                    match response_packet {
+                        Some(packet) => {
+                            _ = socket.send_to(&packet.get_bytes(&secret), &src);
+                        }
+                        _ => (),
+                    }
                 }
                 Err(e) => println!("Packet parsing went haywire: {}", e),
             }
@@ -77,7 +109,7 @@ authenticator: {:?}
             );
 
             for attribute in packet.attributes {
-                let attribute: RfcAttribute = attribute.into();
+                let attribute: RfcAttributeValue = attribute.into();
                 println!("Attribute {} : {:?}", attribute.code, attribute.value);
             }
         }
