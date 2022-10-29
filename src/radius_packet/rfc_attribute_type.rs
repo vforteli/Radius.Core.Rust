@@ -4,7 +4,7 @@ use std::net::Ipv4Addr;
 
 use byteorder::{BigEndian, ByteOrder};
 
-use super::rfc_attribute::RfcAttributeValue;
+use super::rfc_attribute_value::RfcAttributeValue;
 
 #[derive(Debug, PartialEq, Clone)]
 #[repr(u8)]

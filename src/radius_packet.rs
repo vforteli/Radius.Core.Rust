@@ -3,13 +3,13 @@
 use byteorder::{BigEndian, ByteOrder};
 use rand::Rng;
 
-use self::{rfc_attribute::RfcAttributeValue, rfc_attributes::RfcAttributeType};
+use self::{rfc_attribute_value::RfcAttributeValue, rfc_attribute_type::RfcAttributeType};
 
 pub mod packet_codes;
 pub mod packet_parsing_error;
 pub mod radius_password;
-pub mod rfc_attribute;
-pub mod rfc_attributes;
+pub mod rfc_attribute_value;
+pub mod rfc_attribute_type;
 pub mod utils;
 
 const PACKET_HEADER_SIZE: usize = 4;

@@ -1,83 +1,19 @@
-use std::net::UdpSocket;
+use server::Server;
+use test_packet_handler::TestPacketHandler;
 
-use crate::radius_packet::{
-    packet_codes::PacketCode, radius_password::decrypt, rfc_attribute::RfcAttributeValue,
-    rfc_attributes::RfcAttributeType, RadiusPacket,
-};
+use crate::radius_packet::rfc_attribute_value::RfcAttributeValue;
 
+mod packet_handler;
 mod radius_packet;
+mod server;
+mod test_packet_handler;
 
 fn main() -> std::io::Result<()> {
     {
-        let socket = UdpSocket::bind("127.0.0.1:1812")?;
-        let secret = "hurrdurr".as_bytes();
-
         do_stuff();
-        loop {
-            let mut buffer = [0; 4096];
-            let (length, src) = socket.recv_from(&mut buffer)?;
 
-            let packet = radius_packet::RadiusPacket::parse(&buffer[..length], secret);
-
-            match packet {
-                Ok(packet) => {
-                    println!(
-                        "
-                        identifier: {}
-                        code: {:?}
-                        authenticator: {:?}        
-                        ",
-                        packet.identifier, packet.packetcode, packet.authenticator,
-                    );
-
-                    for attribute in packet.attributes.iter() {
-                        println!("Attribute {:?}", attribute);
-                    }
-
-                    let response_packet = match packet.packetcode {
-                        PacketCode::AccessRequest => {
-                            // yes yes, this should be done in one go...
-                            let username = packet.attributes.iter().find_map(|a| match a {
-                                RfcAttributeType::UserName(u) => Some(u),
-                                _ => None,
-                            });
-
-                            let password = packet.attributes.iter().find_map(|a| match a {
-                                RfcAttributeType::UserPassword(u) => {
-                                    Some(decrypt(secret, &packet.authenticator, u))
-                                }
-                                _ => None,
-                            });
-
-                            println!("Username {:?}, password {:?}", username, password);
-
-                            let response_packet_code = if username.unwrap() == "watho"
-                                && password.unwrap().unwrap() == "sup"
-                            {
-                                PacketCode::AccessAccept
-                            } else {
-                                PacketCode::AccessReject
-                            };
-
-                            Some(RadiusPacket::new_response(
-                                response_packet_code,
-                                packet.identifier,
-                                packet.authenticator,
-                            ))
-                        }
-                        _ => None,
-                    };
-
-                    match response_packet {
-                        Some(packet) => {
-                            _ = socket.send_to(&packet.get_bytes(&secret), &src);
-                        }
-                        _ => (),
-                    }
-                }
-                Err(e) => println!("Packet parsing went haywire: {}", e),
-            }
-        }
+        let server = Server::new(&TestPacketHandler {});
+        server.start_listening()
     }
 }
 
