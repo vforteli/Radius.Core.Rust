@@ -1,48 +1,39 @@
-use std::net::UdpSocket;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
 
+use server::{Client, Server};
+use test_packet_handler::TestPacketHandler;
+
+use crate::radius_packet::rfc_attribute_value::RfcAttributeValue;
+
+mod packet_handler;
 mod radius_packet;
+mod server;
+mod test_packet_handler;
 
 fn main() -> std::io::Result<()> {
     {
-        let socket = UdpSocket::bind("127.0.0.1:1812")?;
-        let secret = "hurrdurr".as_bytes();
+        let test_handler = TestPacketHandler {};
+        let secret_bytes = "hurrdurr".as_bytes();
 
-        do_stuff();
-        loop {
-            let mut buffer = [0; 4096];
-            let (length, src) = socket.recv_from(&mut buffer)?;
+        let mut server = Server::new();
 
-            let packet = radius_packet::RadiusPacket::parse(&buffer[..length], secret);
+        server.packet_handlers_clients.insert(
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            Client {
+                secret_bytes,
+                packet_handler: &test_handler,
+            },
+        );
+        server.packet_handlers_clients.insert(
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            Client {
+                secret_bytes,
+                packet_handler: &test_handler,
+            },
+        );
 
-            match packet {
-                Ok(packet) => {
-                    println!(
-                        "
-                        identifier: {}
-                        code: {:?}
-                        authenticator: {:?}        
-                        ",
-                        packet.identifier, packet.packetcode, packet.authenticator,
-                    );
-
-                    for attribute in packet.attributes {
-                        println!("Attribute {} : {:?}", attribute.code, attribute.value);
-                    }
-
-                    let response_packet = radius_packet::RadiusPacket::new_response(
-                        radius_packet::packet_codes::PacketCode::AccessAccept,
-                        packet.identifier,
-                        packet.authenticator,
-                    );
-
-                    let response_packet_bytes = response_packet.get_bytes(&secret);
-
-                    // todo packet handlers
-                    socket.send_to(&response_packet_bytes, &src)?;
-                }
-                Err(e) => println!("Packet parsing went haywire: {}", e),
-            }
-        }
+        server.start_listening()
     }
 }
 
@@ -74,6 +65,7 @@ authenticator: {:?}
             );
 
             for attribute in packet.attributes {
+                let attribute: RfcAttributeValue = attribute.into();
                 println!("Attribute {} : {:?}", attribute.code, attribute.value);
             }
         }

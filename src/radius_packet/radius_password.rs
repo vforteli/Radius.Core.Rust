@@ -58,7 +58,7 @@ pub fn decrypt(
             .collect(),
     ) {
         Ok(value) => Ok(value.trim_end_matches('\0').to_owned()),
-        Err(e) => Err(PacketParsingError::PasswordDecryptionFailed),
+        Err(_e) => Err(PacketParsingError::PasswordDecryptionFailed),
     }
 }
 

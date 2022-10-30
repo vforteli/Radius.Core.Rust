@@ -1,4 +1,6 @@
-enum AcctTerminateCause {
+#[derive(Debug, PartialEq, Clone)]
+#[repr(u8)]
+pub enum AcctTerminateCause {
     UserRequest = 1,
     LostCarrier = 2,
     LostService = 3,
