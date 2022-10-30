@@ -3,13 +3,13 @@
 use byteorder::{BigEndian, ByteOrder};
 use rand::Rng;
 
-use self::{rfc_attribute_value::RfcAttributeValue, rfc_attribute_type::RfcAttributeType};
+use self::{rfc_attribute_type::RfcAttributeType, rfc_attribute_value::RfcAttributeValue};
 
 pub mod packet_codes;
 pub mod packet_parsing_error;
 pub mod radius_password;
-pub mod rfc_attribute_value;
 pub mod rfc_attribute_type;
+pub mod rfc_attribute_value;
 pub mod utils;
 
 const PACKET_HEADER_SIZE: usize = 4;
@@ -22,7 +22,7 @@ pub struct RadiusPacket {
     pub packetcode: packet_codes::PacketCode,
     pub authenticator: Authenticator,
     pub request_authenticator: Authenticator,
-    pub attributes: Vec<RfcAttributeType>, // hooohum, this should be fixed, because there may be attribute spanning multiple entries
+    pub attributes: Vec<RfcAttributeType>,
 }
 
 impl RadiusPacket {
@@ -383,7 +383,9 @@ mod tests {
             )));
         packet
             .attributes
-            .push(RfcAttributeType::NasIpAddress(Ipv4Addr::new(192, 168, 1, 16)));
+            .push(RfcAttributeType::NasIpAddress(Ipv4Addr::new(
+                192, 168, 1, 16,
+            )));
         packet.attributes.push(RfcAttributeType::NASPort(3));
 
         let packet_bytes = packet.get_bytes(secret_bytes);

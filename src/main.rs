@@ -1,4 +1,7 @@
-use server::Server;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+
+use server::{Client, Server};
 use test_packet_handler::TestPacketHandler;
 
 use crate::radius_packet::rfc_attribute_value::RfcAttributeValue;
@@ -10,9 +13,26 @@ mod test_packet_handler;
 
 fn main() -> std::io::Result<()> {
     {
-        do_stuff();
+        let test_handler = TestPacketHandler {};
+        let secret_bytes = "hurrdurr".as_bytes();
 
-        let server = Server::new(&TestPacketHandler {});
+        let mut server = Server::new();
+
+        server.packet_handlers_clients.insert(
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            Client {
+                secret_bytes,
+                packet_handler: &test_handler,
+            },
+        );
+        server.packet_handlers_clients.insert(
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            Client {
+                secret_bytes,
+                packet_handler: &test_handler,
+            },
+        );
+
         server.start_listening()
     }
 }
