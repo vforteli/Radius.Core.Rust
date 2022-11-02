@@ -11,3 +11,4 @@ hex = "0.4.3"
 byteorder = "1"
 hmac = "0.12.1"
 md-5 = "0.10.1"
+tokio = { version = "1.21.2", features = ["full"] }

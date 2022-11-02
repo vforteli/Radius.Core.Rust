@@ -1,7 +1,6 @@
-use std::{
-    collections::HashMap,
-    net::{IpAddr, UdpSocket},
-};
+use std::{collections::HashMap, net::IpAddr};
+
+use tokio::net::UdpSocket;
 
 use crate::{packet_handler::PacketHandler, radius_packet::RadiusPacket};
 
@@ -21,13 +20,15 @@ impl<'a> Server<'a> {
         }
     }
 
-    pub fn start_listening(self) -> std::io::Result<()> {
-        let socket = UdpSocket::bind("127.0.0.1:1812")?;
+    pub async fn start_listening(self, port: u16) -> std::io::Result<()> {
+        let socket = UdpSocket::bind("0.0.0.0:".to_string() + &port.to_string()).await?;
+
+        println!("Listening on port: {}", port);
 
         loop {
             // todo, async and/or thread pool?
             let mut buffer = [0; 4096];
-            let (length, src) = socket.recv_from(&mut buffer)?;
+            let (length, src) = socket.recv_from(&mut buffer).await?;
 
             let handler = self.packet_handlers_clients.get(&src.ip());
 
@@ -53,10 +54,12 @@ impl<'a> Server<'a> {
                                 .handle_packet(packet, &handler.secret_bytes)
                             {
                                 Some(response_packet) => {
-                                    _ = socket.send_to(
-                                        &response_packet.get_bytes(&handler.secret_bytes),
-                                        &src,
-                                    );
+                                    _ = socket
+                                        .send_to(
+                                            &response_packet.get_bytes(&handler.secret_bytes),
+                                            &src,
+                                        )
+                                        .await?;
                                 }
                                 _ => (),
                             }
