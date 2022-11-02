@@ -45,7 +45,7 @@ impl<'a> Server<'a> {
                                 packet.identifier, packet.packetcode, packet.authenticator,
                             );
 
-                            for attribute in packet.attributes.iter() {
+                            for attribute in packet.attributes.iter() {                                
                                 println!("Attribute {:?}", attribute);
                             }
 

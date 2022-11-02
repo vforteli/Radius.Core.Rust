@@ -67,11 +67,21 @@ impl RadiusPacket {
         let mut header_bytes: [u8; PACKET_HEADER_SIZE] =
             [self.packetcode as u8, self.identifier, 0, 0];
 
+        let mut message_authenticator_position: usize = 0;
         let mut attribute_bytes: Vec<u8> = Vec::new();
+
         for attribute in self.attributes {
             println!("adding attribute {:?}", attribute);
 
             let attribute: RfcAttributeValue = attribute.into();
+
+            if attribute.code == 80 {
+                message_authenticator_position = attribute_bytes.len();
+                println!(
+                    "found message authenticator at position {}",
+                    message_authenticator_position
+                );
+            }
 
             println!(
                 "adding attribute {} : {:?}",
@@ -164,7 +174,6 @@ impl RadiusPacket {
     ) -> Result<Self, packet_parsing_error::PacketParsingError> {
         let length_from_packet = BigEndian::read_u16(&packet_bytes[2..4]) as usize;
 
-        // we can probably allow the buffer to include extra bytes at the end, but these will be ignored
         if packet_bytes.len() < length_from_packet.into() {
             return Err(packet_parsing_error::PacketParsingError::InvalidLength);
         }
@@ -390,4 +399,91 @@ mod tests {
 
         assert_eq!(expected_bytes, packet_bytes);
     }
+
+    #[test]
+    fn create_coa_request_packet() {
+        let secret_bytes = "xyzzy5461".as_bytes();
+        let expected_bytes = hex::decode(
+            "2b0000266613591d86e32fa6dbae94f13772573601066e656d6f0406c0a80110050600000003",
+        )
+        .unwrap();
+
+        let mut packet = RadiusPacket::new_request(super::packet_codes::PacketCode::CoaRequest, 0);
+
+        // setting this manually here to match expected bytes... it is actually random
+        packet.authenticator = hex::decode("0f403f9473978057bd83d5cb98f4227a")
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        packet
+            .attributes
+            .push(RfcAttributeType::UserName("nemo".to_string()));
+
+        packet
+            .attributes
+            .push(RfcAttributeType::NasIpAddress(Ipv4Addr::new(
+                192, 168, 1, 16,
+            )));
+
+        packet.attributes.push(RfcAttributeType::NASPort(3));
+
+        let packet_bytes = packet.get_bytes(secret_bytes);
+
+        assert_eq!(expected_bytes, packet_bytes);
+    }
+
+    #[test]
+    fn create_packet_with_message_authenticator() {
+        let secret_bytes = "testing123".as_bytes();
+        let expected_bytes = hex::decode(
+            "0368002c71624da25c0b5897f70539e019a81eae4f06046700045012ce70fe87a997b44de583cd19bea29321",
+        )
+        .unwrap();
+
+        let eap_message_bytes = hex::decode("04670004").unwrap().try_into().unwrap();
+
+        let authenticator = hex::decode("b3e22ff855a690280e6c3444c46e663b")
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        let mut packet = RadiusPacket::new_response(
+            super::packet_codes::PacketCode::AccessReject,
+            104,
+            authenticator,
+        );
+
+        packet
+            .attributes
+            .push(RfcAttributeType::EapMessage(eap_message_bytes));
+
+        packet
+            .attributes
+            .push(RfcAttributeType::MessageAuthenticator());
+
+        let packet_bytes = packet.get_bytes(secret_bytes);
+
+        assert_eq!(expected_bytes, packet_bytes);
+    }
+
+    /*
+
+    [TestCase]
+       public void TestMessageAuthenticatorResponsePacket()
+       {
+           var expected = "0368002c71624da25c0b5897f70539e019a81eae4f06046700045012ce70fe87a997b44de583cd19bea29321";
+           var secret = "testing123";
+
+           var response = new RadiusPacket(PacketCode.AccessReject, 104, secret)
+           {
+               RequestAuthenticator = Utils.StringToByteArray("b3e22ff855a690280e6c3444c46e663b")
+           };
+
+           response.AddAttribute("EAP-Message", Utils.StringToByteArray("04670004"));
+           response.AddAttribute("Message-Authenticator", new byte[16]);
+
+           var radiusPacketParser = new RadiusPacketParser(NullLogger<RadiusPacketParser>.Instance, GetDictionary());
+           Assert.AreEqual(expected, radiusPacketParser.GetBytes(response).ToHexString());
+       }*/
 }
