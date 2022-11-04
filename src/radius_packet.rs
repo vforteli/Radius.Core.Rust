@@ -75,12 +75,9 @@ impl RadiusPacket {
 
             let attribute: RfcAttributeValue = attribute.into();
 
+            // message authenticator position is saved since we have to calculate and populate this after everything else
             if attribute.code == 80 {
                 message_authenticator_position = attribute_bytes.len();
-                println!(
-                    "found message authenticator at position {}",
-                    message_authenticator_position
-                );
             }
 
             println!(
@@ -106,20 +103,6 @@ impl RadiusPacket {
             println!()
         }
 
-        // else if (packet.Code == PacketCode.StatusServer)
-        // {
-        //     var authenticator = packet.RequestAuthenticator != null ? CalculateResponseAuthenticator(packet.SharedSecret, packet.RequestAuthenticator, packetBytesArray) : packet.Authenticator;
-        //     Buffer.BlockCopy(authenticator, 0, packetBytesArray, 4, 16);
-
-        //     if (messageAuthenticatorPosition != 0)
-        //     {
-        //         var temp = new byte[16];
-        //         Buffer.BlockCopy(temp, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
-        //         var messageAuthenticatorBytes = CalculateMessageAuthenticator(packetBytesArray, packet.SharedSecret, packet.RequestAuthenticator);
-        //         Buffer.BlockCopy(messageAuthenticatorBytes, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
-        //     }
-        // }
-
         match self.packetcode {
             packet_codes::PacketCode::AccountingRequest
             | packet_codes::PacketCode::DisconnectRequest
@@ -133,31 +116,47 @@ impl RadiusPacket {
                 println!("all other...")
             }
         }
-        /*
-        // todo refactor this...
-           if (packet.Code == PacketCode.AccountingRequest || packet.Code == PacketCode.DisconnectRequest || packet.Code == PacketCode.CoaRequest)
-           {
-               if (messageAuthenticatorPosition != 0)
-               {
-                   var temp = new byte[16];
-                   Buffer.BlockCopy(temp, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
-                   var messageAuthenticatorBytes = CalculateMessageAuthenticator(packetBytesArray, packet.SharedSecret, null);
-                   Buffer.BlockCopy(messageAuthenticatorBytes, 0, packetBytesArray, messageAuthenticatorPosition + 2, 16);
-               }
 
-               var authenticator = CalculateRequestAuthenticator(packet.SharedSecret, packetBytesArray);
-               Buffer.BlockCopy(authenticator, 0, packetBytesArray, 4, 16);
-           } */
+        let authenticator_bytes = match self.packetcode {
+            packet_codes::PacketCode::StatusServer => {
+                let message_authenticator =
+                    utils::calculate_message_authenticator_for_access_reject_etc(
+                        &header_bytes,
+                        &self.authenticator,
+                        &attribute_bytes,
+                        secret_bytes,
+                    );
 
-        // todo ooooh boy.. fix this
-        let authenticator_bytes: Authenticator = match self.packetcode {
-            packet_codes::PacketCode::AccessRequest => self.authenticator,
-            _ => utils::calculate_response_authenticator(
-                &header_bytes,
-                &self.request_authenticator,
-                &attribute_bytes,
-                secret_bytes,
-            ),
+                attribute_bytes.splice(message_authenticator_position + 2.., message_authenticator);
+
+                self.authenticator
+            }
+            _ => {
+                if message_authenticator_position != 0 {
+                    let message_authenticator =
+                        utils::calculate_message_authenticator_for_access_reject_etc(
+                            &header_bytes,
+                            &self.request_authenticator,
+                            &attribute_bytes,
+                            secret_bytes,
+                        );
+                    attribute_bytes
+                        .splice(message_authenticator_position + 2.., message_authenticator);
+                }
+
+                // todo ooooh boy.. fix this
+                let authenticator_bytes: Authenticator = match self.packetcode {
+                    packet_codes::PacketCode::AccessRequest => self.authenticator,
+                    _ => utils::calculate_response_authenticator(
+                        &header_bytes,
+                        &self.request_authenticator,
+                        &attribute_bytes,
+                        secret_bytes,
+                    ),
+                };
+
+                authenticator_bytes
+            }
         };
 
         let mut response_packet_bytes: Vec<u8> = Vec::new();
@@ -467,23 +466,76 @@ mod tests {
         assert_eq!(expected_bytes, packet_bytes);
     }
 
-    /*
+    // https://datatracker.ietf.org/doc/rfc5997/
+    #[test]
+    fn create_status_server_packet_with_message_authenticator() {
+        let secret_bytes = "xyzzy5461".as_bytes();
+        let expected_bytes = hex::decode(
+            "0cda00268a54f4686fb394c52866e302185d062350125a665e2e1e8411f3e243822097c84fa3",
+        )
+        .unwrap();
 
-    [TestCase]
-       public void TestMessageAuthenticatorResponsePacket()
-       {
-           var expected = "0368002c71624da25c0b5897f70539e019a81eae4f06046700045012ce70fe87a997b44de583cd19bea29321";
-           var secret = "testing123";
+        let mut packet =
+            RadiusPacket::new_request(super::packet_codes::PacketCode::StatusServer, 218);
 
-           var response = new RadiusPacket(PacketCode.AccessReject, 104, secret)
-           {
-               RequestAuthenticator = Utils.StringToByteArray("b3e22ff855a690280e6c3444c46e663b")
-           };
+        // setting this manually here to match expected bytes... it is actually random
+        packet.authenticator = hex::decode("8a54f4686fb394c52866e302185d0623")
+            .unwrap()
+            .try_into()
+            .unwrap();
 
-           response.AddAttribute("EAP-Message", Utils.StringToByteArray("04670004"));
-           response.AddAttribute("Message-Authenticator", new byte[16]);
+        // hohum, decide on which level we want to add mandatory message authenticators.. responsibility of the packet protocol core or should the server code do this, or force users to  implement handlers to explicitly add it?
+        packet
+            .attributes
+            .push(RfcAttributeType::MessageAuthenticator());
 
-           var radiusPacketParser = new RadiusPacketParser(NullLogger<RadiusPacketParser>.Instance, GetDictionary());
-           Assert.AreEqual(expected, radiusPacketParser.GetBytes(response).ToHexString());
-       }*/
+        let packet_bytes = packet.get_bytes(secret_bytes);
+
+        assert_eq!(expected_bytes, packet_bytes);
+    }
+
+    #[test]
+    fn create_status_server_packet_with_message_authenticator_accounting() {
+        let secret_bytes = "xyzzy5461".as_bytes();
+        let expected_bytes = hex::decode(
+            "0cb30026925f6b66dd5fed571fcb1db7ad3882605012e8d6eabda910875cd91fdade26367858",
+        )
+        .unwrap();
+
+        let mut packet =
+            RadiusPacket::new_request(super::packet_codes::PacketCode::StatusServer, 179);
+
+        // setting this manually here to match expected bytes... it is actually random
+        packet.authenticator = hex::decode("925f6b66dd5fed571fcb1db7ad388260")
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        // hohum, decide on which level we want to add mandatory message authenticators.. responsibility of the packet protocol core or should the server code do this, or force users to  implement handlers to explicitly add it?
+        packet
+            .attributes
+            .push(RfcAttributeType::MessageAuthenticator());
+
+        let packet_bytes = packet.get_bytes(secret_bytes);
+
+        assert_eq!(expected_bytes, packet_bytes);
+    }
+
+    #[test]
+    fn create_disconnect_request() {
+        let secret_bytes = "xyzzy5461".as_bytes();
+        let expected_bytes =
+            hex::decode("2801001e2ec8a0da729620319be0140bc28e92682c0a3039303432414638").unwrap();
+
+        let mut packet =
+            RadiusPacket::new_request(super::packet_codes::PacketCode::DisconnectRequest, 1);
+
+        packet
+            .attributes
+            .push(RfcAttributeType::AcctSessionId("09042AF8".to_string()));
+
+        let packet_bytes = packet.get_bytes(secret_bytes);
+
+        assert_eq!(expected_bytes, packet_bytes);
+    }
 }

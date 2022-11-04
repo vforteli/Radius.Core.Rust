@@ -72,3 +72,16 @@ pub fn calculate_message_authenticator(
 
     return mac.finalize().into_bytes().into();
 }
+
+/// Calculate the message authenticator to be added to packet
+/// Message authentictor attribute MUST be zeroed before
+pub fn calculate_message_authenticator_for_access_reject_etc(
+    header_bytes: &[u8],
+    authenticator_bytes: &[u8],
+    attribute_bytes: &[u8],
+    secret_bytes: &[u8],
+) -> [u8; 16] {
+    let mut mac = HmacMd5::new_from_slice(secret_bytes).unwrap();
+    mac.update(&[header_bytes, authenticator_bytes, attribute_bytes].concat());
+    mac.finalize().into_bytes().into()
+}
