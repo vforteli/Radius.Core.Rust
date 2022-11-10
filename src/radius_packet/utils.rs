@@ -6,7 +6,7 @@ type HmacMd5 = Hmac<Md5>;
 /// Creates a response authenticator
 /// Response authenticator = MD5(Code+ID+Length+RequestAuth+Attributes+Secret)
 /// Actually this means it is the response packet with the request authenticator and secret...
-pub fn calculate_authenticator(
+fn calculate_authenticator(
     packet_header_bytes: &[u8; 4],
     authenticator: &[u8; 16],
     attribute_bytes: &[u8],

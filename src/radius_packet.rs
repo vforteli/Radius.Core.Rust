@@ -39,21 +39,6 @@ impl RadiusPacket {
     }
 
     pub fn new_request(packetcode: packet_codes::PacketCode, identifier: u8) -> Self {
-        // // Generate random authenticator for access request packets
-        // if (Code == PacketCode.AccessRequest || Code == PacketCode.StatusServer)
-        // {
-        //     using (var csp = RandomNumberGenerator.Create())
-        //     {
-        //         csp.GetNonZeroBytes(Authenticator);
-        //     }
-        // }
-
-        // // A Message authenticator is required in status server packets, calculated last
-        // if (Code == PacketCode.StatusServer)
-        // {
-        //     AddAttribute("Message-Authenticator", new byte[16]);
-        // }
-
         Self {
             packetcode,
             identifier,
@@ -95,27 +80,6 @@ impl RadiusPacket {
             &mut header_bytes[2..4],
             packet_length_bytes.try_into().unwrap(),
         );
-
-        if self.packetcode == packet_codes::PacketCode::AccountingRequest
-            || self.packetcode == packet_codes::PacketCode::DisconnectRequest
-            || self.packetcode == packet_codes::PacketCode::CoaRequest
-        {
-            println!()
-        }
-
-        match self.packetcode {
-            packet_codes::PacketCode::AccountingRequest
-            | packet_codes::PacketCode::DisconnectRequest
-            | packet_codes::PacketCode::CoaRequest => {
-                println!("hurr");
-            }
-            packet_codes::PacketCode::StatusServer | packet_codes::PacketCode::StatusClient => {
-                println!("durr");
-            }
-            _ => {
-                println!("all other...")
-            }
-        }
 
         let authenticator_bytes = match self.packetcode {
             packet_codes::PacketCode::StatusServer => {
@@ -235,6 +199,8 @@ impl RadiusPacket {
             position += attribute_length;
         }
 
+        // validate message authenticator if one is found
+        // actually this should also require a message authenticator for certain packet types
         if message_authenticator_position != 0 {
             println!("Found message authenticator!");
             let calculated_message_authenticator = utils::calculate_message_authenticator(
