@@ -93,24 +93,16 @@ pub enum RfcAttributeType {
     ServiceType(ServiceType),
     AcctStatusType(AcctStatusType),
     AcctSessionId(String),
-    MessageAuthenticator(Vec<u8>),
+    EapMessage(Vec<u8>),
+    MessageAuthenticator(), // Message authenticators are set as [0; 16] and are populated when the packet is assembled
     Unknown(Vec<u8>),
 }
 
+// hoooohum
 impl Into<u8> for RfcAttributeType {
     fn into(self) -> u8 {
-        match self {
-            Self::UserName(_) => 1,
-            Self::UserPassword(_) => 2,
-            Self::ChapPassword(_) => 3,
-            Self::NasIpAddress(_) => 4,
-            Self::NASPort(_) => 5,
-            Self::ServiceType(_) => 6,
-            Self::AcctStatusType(_) => 40,
-            Self::AcctSessionId(_) => 44,
-            Self::MessageAuthenticator(_) => 80,
-            Self::Unknown(_) => 0,
-        }
+        let value: RfcAttributeValue = self.into();
+        value.code
     }
 }
 
@@ -148,7 +140,11 @@ impl Into<RfcAttributeValue> for RfcAttributeType {
                 code: 44,
                 value: v.as_bytes().to_vec(),
             },
-            Self::MessageAuthenticator(v) => RfcAttributeValue { code: 80, value: v },
+            Self::EapMessage(v) => RfcAttributeValue { code: 79, value: v },
+            Self::MessageAuthenticator() => RfcAttributeValue {
+                code: 80,
+                value: [0; 16].to_vec(),
+            },
             Self::Unknown(v) => RfcAttributeValue { code: 0, value: v },
         }
     }
@@ -171,7 +167,8 @@ impl From<RfcAttributeValue> for RfcAttributeType {
             6 => Self::ServiceType(attr.value[3].into()),
             40 => Self::AcctStatusType(attr.value[3].into()),
             44 => Self::AcctSessionId(String::from_utf8(attr.value).unwrap()),
-            80 => Self::MessageAuthenticator(attr.value),
+            79 => Self::EapMessage(attr.value),
+            80 => Self::MessageAuthenticator(),
             _ => Self::Unknown(attr.value), // unknown aka too lazy to create the dictionary parser and include all rfc attributes
         }
     }
